@@ -13,7 +13,7 @@ import { withSpinner } from "../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../lib/output.js";
 import { log } from "../lib/logger.js";
 import { saveLastOrder } from "../lib/config.js";
-import { collectCheckoutForm } from "../lib/prompts.js";
+import { collectCheckoutForm, type PartialFormData } from "../lib/prompts.js";
 import { FileError, TimeoutError } from "../lib/errors.js";
 import { isTTY } from "../lib/tty.js";
 import {
@@ -39,30 +39,30 @@ export const cvCommand = new Command("cv")
       }
     },
   })
-  .option(
-    "-o, --output <caminho>",
-    "Caminho para salvar o resultado",
-    DEFAULT_OUTPUT,
-  )
+  .option("-o, --output <caminho>", "Caminho para salvar o resultado", DEFAULT_OUTPUT)
   .option("--force", "Sobrescrever arquivo de saída se existir")
-  .option(
-    "--timeout <minutos>",
-    "Timeout em minutos para aguardar processamento",
-    "30",
-  )
-  .option(
-    "-i, --interactive",
-    "Modo interativo: preenche nome, email, CPF, etc. no terminal",
-  )
+  .option("--timeout <minutos>", "Timeout em minutos para aguardar processamento", "30")
+  .option("-i, --interactive", "Modo interativo: preenche dados no terminal")
+  .option("--name <nome>", "Nome completo (pula o prompt)")
+  .option("--email <email>", "Email (pula o prompt)")
+  .option("--cpf <cpf>", "CPF (pula o prompt)")
+  .option("--phone <telefone>", "Telefone (pula o prompt)")
+  .option("--language <idioma>", "Idioma: pt-BR, en, es, fr, de, it (pula o prompt)")
+  .option("--job <descricao>", "Descrição da vaga (pula o prompt)")
   .addHelpText(
     "after",
     `
 Exemplos:
   $ ajusta cv meu-curriculo.pdf
   $ ajusta cv meu-curriculo.pdf -i
-  $ ajusta cv meu-curriculo.docx -o resultado.pdf
+  $ ajusta cv curriculo.pdf --name "João" --email "joao@email.com"
+  $ ajusta cv curriculo.pdf -i --language pt-BR
   $ ajusta cv meu-curriculo.pdf --json
   $ ajusta cv meu-curriculo.pdf --force --timeout 60
+
+Modo interativo (-i):
+  Coleta nome, email, CPF, telefone, idioma e descrição da vaga.
+  Use flags (--name, --email, etc.) para pular prompts específicos.
 
 Códigos de erro:
   file_not_found        Arquivo de entrada não encontrado
@@ -70,6 +70,7 @@ Códigos de erro:
   api_error             Erro na API do AjustaCV
   network_error         Falha de conexão com a API
   timeout_error         Tempo limite excedido
+  not_interactive       Modo interativo requer um terminal
 `,
   )
   .action(async (input: string, opts) => {
@@ -88,10 +89,22 @@ Códigos de erro:
         );
       }
 
-      // ── Interactive form ─────────────────────────────────────────
-      let formData = {};
-      if (interactive && isTTY()) {
-        formData = await collectCheckoutForm();
+      // ── Collect form data ────────────────────────────────────────
+      // Flags provided on the command line pre-fill the form.
+      // In interactive mode, only missing fields are prompted.
+      // Without -i, only flag values are sent (no prompts).
+      const prefilled: PartialFormData = {};
+      if (opts.name) prefilled.name = opts.name as string;
+      if (opts.email) prefilled.email = opts.email as string;
+      if (opts.cpf) prefilled.cpf = (opts.cpf as string).replace(/\D/g, "");
+      if (opts.phone) prefilled.phone = (opts.phone as string).replace(/\D/g, "");
+      if (opts.language) prefilled.language = opts.language as string;
+      if (opts.job) prefilled.jobDescription = opts.job as string;
+
+      let formData: PartialFormData = prefilled;
+
+      if (interactive) {
+        formData = await collectCheckoutForm(prefilled);
       }
 
       // ── 1. Submit CV ─────────────────────────────────────────────

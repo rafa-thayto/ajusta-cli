@@ -1,5 +1,7 @@
 import { input, select, confirm, editor } from "@inquirer/prompts";
 import chalk from "chalk";
+import { isTTY } from "./tty.js";
+import { CliError, EXIT_USAGE } from "./errors.js";
 
 export interface CheckoutFormData {
   name: string;
@@ -9,6 +11,11 @@ export interface CheckoutFormData {
   language: string;
   jobDescription?: string;
 }
+
+/** Fields that can be pre-filled via CLI flags. */
+export type PartialFormData = Partial<CheckoutFormData>;
+
+// ── Formatting ──────────────────────────────────────────────────────
 
 function formatCpf(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -26,6 +33,8 @@ function formatPhone(value: string): string {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
+// ── Validation ──────────────────────────────────────────────────────
+
 function validateEmail(value: string): boolean | string {
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!re.test(value)) return "Email inválido.";
@@ -39,62 +48,113 @@ function validateCpf(value: string): boolean | string {
   return true;
 }
 
-export async function collectCheckoutForm(): Promise<CheckoutFormData> {
-  process.stderr.write(`\n${chalk.bold.cyan("  AjustaCV — Dados para o pedido")}\n\n`);
+// ── Visual framing ──────────────────────────────────────────────────
 
-  const name = await input({
-    message: "Nome completo",
-    required: true,
-    validate: (v) => (v.trim().length >= 2 ? true : "Informe seu nome."),
-  });
+function intro(title: string) {
+  process.stderr.write(`\n  ${chalk.bold.cyan("\u250C")}  ${chalk.bold.cyan(title)}\n`);
+}
 
-  const email = await input({
-    message: "Email",
-    required: true,
-    validate: validateEmail,
-  });
+function bar() {
+  process.stderr.write(`  ${chalk.cyan("\u2502")}\n`);
+}
 
-  const cpf = await input({
-    message: "CPF",
-    required: true,
-    validate: validateCpf,
-    transformer: (v) => formatCpf(v),
-  });
+function outro(msg: string) {
+  process.stderr.write(`  ${chalk.cyan("\u2502")}\n`);
+  process.stderr.write(`  ${chalk.bold.cyan("\u2514")}  ${chalk.dim(msg)}\n\n`);
+}
 
-  const phone = await input({
-    message: "Telefone",
-    required: true,
-    validate: (v) =>
-      v.replace(/\D/g, "").length >= 10 ? true : "Telefone inválido.",
-    transformer: (v) => formatPhone(v),
-  });
+// ── Main form collector ─────────────────────────────────────────────
 
-  const language = await select({
-    message: "Idioma do currículo",
-    choices: [
-      { value: "pt-BR", name: "Português (Brasil)" },
-      { value: "en", name: "English" },
-      { value: "es", name: "Español" },
-      { value: "fr", name: "Français" },
-      { value: "de", name: "Deutsch" },
-      { value: "it", name: "Italiano" },
-    ],
-  });
+/**
+ * Collect checkout form data interactively.
+ * Fields already provided in `prefilled` are skipped.
+ * Errors if not in a TTY (non-interactive environment).
+ */
+export async function collectCheckoutForm(
+  prefilled: PartialFormData = {},
+): Promise<CheckoutFormData> {
+  if (!isTTY()) {
+    throw new CliError(
+      "Modo interativo requer um terminal (TTY).\n\n" +
+      "  Use flags para fornecer os dados:\n" +
+      "    --name, --email, --cpf, --phone, --language, --job",
+      "not_interactive",
+      EXIT_USAGE,
+    );
+  }
 
-  const hasJobDesc = await confirm({
-    message: "Você tem a descrição da vaga?",
-    default: true,
-  });
+  intro("AjustaCV \u2014 Dados para o pedido");
 
-  let jobDescription: string | undefined;
-  if (hasJobDesc) {
-    jobDescription = await editor({
-      message: "Cole a descrição da vaga (salve e feche o editor)",
+  const name =
+    prefilled.name ||
+    (await input({
+      message: "Nome completo",
+      required: true,
+      validate: (v) => (v.trim().length >= 2 ? true : "Informe seu nome."),
+    }));
+
+  const email =
+    prefilled.email ||
+    (await input({
+      message: "Email",
+      required: true,
+      validate: validateEmail,
+    }));
+
+  const cpf =
+    prefilled.cpf ||
+    (await input({
+      message: "CPF",
+      required: true,
+      validate: validateCpf,
+      transformer: (v) => formatCpf(v),
+    }));
+
+  const phone =
+    prefilled.phone ||
+    (await input({
+      message: "Telefone",
+      required: true,
+      validate: (v) =>
+        v.replace(/\D/g, "").length >= 10 ? true : "Telefone inválido.",
+      transformer: (v) => formatPhone(v),
+    }));
+
+  const LANGUAGE_CHOICES = [
+    { value: "pt-BR", name: "Português (Brasil)" },
+    { value: "en", name: "English" },
+    { value: "es", name: "Español" },
+    { value: "fr", name: "Français" },
+    { value: "de", name: "Deutsch" },
+    { value: "it", name: "Italiano" },
+  ] as const;
+
+  const language =
+    prefilled.language ||
+    (await select({
+      message: "Idioma do currículo",
+      choices: [...LANGUAGE_CHOICES],
+    }));
+
+  let jobDescription = prefilled.jobDescription;
+  if (jobDescription === undefined) {
+    const hasJobDesc = await confirm({
+      message: "Você tem a descrição da vaga?",
+      default: true,
     });
-    if (jobDescription && !jobDescription.trim()) {
-      jobDescription = undefined;
+
+    if (hasJobDesc) {
+      jobDescription = await editor({
+        message: "Cole a descrição da vaga (salve e feche o editor)",
+      });
+      if (jobDescription && !jobDescription.trim()) {
+        jobDescription = undefined;
+      }
     }
   }
+
+  bar();
+  outro("Dados coletados!");
 
   return {
     name: name.trim(),

@@ -16,10 +16,21 @@ process.on("SIGINT", () => {
 });
 
 process.on("uncaughtException", (err) => {
+  // @inquirer/prompts throws ExitPromptError on Ctrl+C — clean exit
+  if (err instanceof Error && err.name === "ExitPromptError") {
+    stopActiveSpinner();
+    process.stderr.write("\n");
+    process.exit(0);
+  }
   outputError(err);
 });
 
 process.on("unhandledRejection", (err) => {
+  if (err instanceof Error && err.name === "ExitPromptError") {
+    stopActiveSpinner();
+    process.stderr.write("\n");
+    process.exit(0);
+  }
   outputError(err);
 });
 
