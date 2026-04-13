@@ -1,10 +1,10 @@
 {
   "name": "ajusta",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "CLI para análise ATS e otimização de currículos — by AjustaCV",
   "type": "module",
   "bin": {
-    "ajusta": "./dist/index.js"
+    "ajusta": "dist/index.js"
   },
   "files": [
     "dist"
@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "release": "npm version minor && npm publish && git push origin main --tags"
   },
   "keywords": [
     "ats",
@@ -28,7 +29,7 @@
   "homepage": "https://ajustacv.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rafa-thayto/ajusta-cli"
+    "url": "git+https://github.com/rafa-thayto/ajusta-cli.git"
   },
   "engines": {
     "node": ">=18"
