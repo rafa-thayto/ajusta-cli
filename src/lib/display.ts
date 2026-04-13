@@ -1,7 +1,16 @@
 import chalk from "chalk";
+import qrcode from "qrcode-terminal";
 import type { CliOrderResponse, CliOrderStatus } from "./api.js";
 
-export function displayPaymentInfo(order: CliOrderResponse): void {
+function generateQrCode(text: string): Promise<string> {
+  return new Promise((resolve) => {
+    qrcode.generate(text, { small: true }, (code: string) => {
+      resolve(code);
+    });
+  });
+}
+
+export async function displayPaymentInfo(order: CliOrderResponse): Promise<void> {
   const priceFormatted = (order.priceCents / 100)
     .toFixed(2)
     .replace(".", ",");
@@ -13,13 +22,30 @@ ${chalk.bold("  \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u25
 
   ${chalk.bold("Valor:")}  R$ ${chalk.green.bold(priceFormatted)}
   ${chalk.bold("Pedido:")} ${chalk.dim(order.orderId)}
-
-${chalk.bold("  PIX Copia e Cola:")}
-
-  ${chalk.cyan(order.pixCode)}
-
-${chalk.dim("  Cole o c\u00F3digo acima no app do seu banco para pagar.")}
 `);
+
+  // QR Code
+  if (order.pixQrCodeText) {
+    const qr = await generateQrCode(order.pixQrCodeText);
+    process.stderr.write(`${chalk.bold("  QR Code PIX:")}\n\n`);
+    // Indent each line of the QR code
+    const indented = qr
+      .split("\n")
+      .map((line) => `    ${line}`)
+      .join("\n");
+    process.stderr.write(indented + "\n\n");
+  }
+
+  // PIX copy-paste code
+  process.stderr.write(`${chalk.bold("  PIX Copia e Cola:")}\n\n`);
+  process.stderr.write(`  ${chalk.cyan(order.pixCode)}\n\n`);
+
+  // Payment URL
+  if (order.paymentUrl) {
+    process.stderr.write(`  ${chalk.bold("Pagar no navegador:")} ${chalk.underline.cyan(order.paymentUrl)}\n\n`);
+  }
+
+  process.stderr.write(`${chalk.dim("  Escaneie o QR code ou cole o c\u00F3digo PIX no app do seu banco.")}\n\n`);
 }
 
 const STEP_LABELS: Record<string, string> = {

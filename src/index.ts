@@ -42,6 +42,11 @@ const program = new Command()
 program.addCommand(cvCommand);
 program.addCommand(statusCommand);
 
+// Show help when no command is provided
+program.action(() => {
+  program.help();
+});
+
 program.addHelpText(
   "after",
   `

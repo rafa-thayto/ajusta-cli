@@ -12,6 +12,7 @@ export interface CliOrderResponse {
   pixQrCodeText: string;
   priceCents: number;
   expiresAt: string;
+  paymentUrl?: string;
 }
 
 export interface CliOrderStatus {

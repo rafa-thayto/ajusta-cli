@@ -22,6 +22,13 @@ export type ResolvedInput = FileInput | Base64Input;
  * the resolved data ready for the API call.
  */
 export function resolveInput(input: string): ResolvedInput {
+  if (!input || !input.trim()) {
+    throw new FileError(
+      "Nenhum arquivo informado. Informe o caminho para um PDF ou DOCX.\n\n  Exemplo: ajusta cv meu-curriculo.pdf",
+      "file_not_found",
+    );
+  }
+
   // Base64 heuristic: no path separators, doesn't exist on disk, long string
   if (
     !input.includes("/") &&
@@ -36,7 +43,7 @@ export function resolveInput(input: string): ResolvedInput {
 
   if (!fs.existsSync(absolutePath)) {
     throw new FileError(
-      `Arquivo não encontrado: ${absolutePath}`,
+      `Arquivo não encontrado: ${absolutePath}\n\n  Verifique se o caminho está correto e tente novamente.`,
       "file_not_found",
     );
   }
@@ -44,7 +51,7 @@ export function resolveInput(input: string): ResolvedInput {
   const ext = path.extname(absolutePath).toLowerCase();
   if (ext !== ".pdf" && ext !== ".docx") {
     throw new FileError(
-      "Formato não suportado. Use PDF ou DOCX.",
+      `Formato "${ext || "desconhecido"}" não suportado.\n\n  Formatos aceitos: PDF, DOCX\n  Exemplo: ajusta cv meu-curriculo.pdf`,
       "unsupported_format",
     );
   }

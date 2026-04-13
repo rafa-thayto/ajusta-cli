@@ -24,6 +24,21 @@ import {
 export const cvCommand = new Command("cv")
   .description("Envia seu currículo para otimização ATS com IA")
   .argument("<input>", "Caminho para arquivo PDF/DOCX ou conteúdo base64")
+  .configureOutput({
+    outputError(str) {
+      if (str.includes("missing required argument")) {
+        process.stderr.write(
+          `\n  ${chalk.red("\u2718")} Nenhum arquivo informado.\n\n` +
+          `  ${chalk.bold("Uso:")} ajusta cv ${chalk.dim("<arquivo>")} ${chalk.dim("[opções]")}\n\n` +
+          `  ${chalk.bold("Exemplos:")}\n` +
+          `    $ ajusta cv meu-curriculo.pdf\n` +
+          `    $ ajusta cv curriculo.docx -o resultado.pdf\n\n`,
+        );
+      } else {
+        process.stderr.write(str);
+      }
+    },
+  })
   .option(
     "-o, --output <caminho>",
     "Caminho para salvar o resultado",
@@ -81,7 +96,7 @@ Códigos de erro:
       if (isJsonMode()) {
         outputResult(order);
       } else {
-        displayPaymentInfo(order);
+        await displayPaymentInfo(order);
       }
 
       // ── 4. Poll for payment + processing ─────────────────────────
@@ -138,17 +153,24 @@ Códigos de erro:
         }
 
         if (status.status === "failed") {
-          spinner?.fail(
-            chalk.red(
-              "Processamento falhou. Tente novamente ou acesse ajustacv.com",
-            ),
+          spinner?.fail(chalk.red("Processamento falhou."));
+          throw new Error(
+            "Processamento falhou.\n\n" +
+            "  Próximos passos:\n" +
+            "    1. Tente novamente com: ajusta cv <arquivo>\n" +
+            "    2. Verifique se o arquivo não está corrompido\n" +
+            "    3. Acesse https://ajustacv.com para suporte",
           );
-          throw new Error("Processamento falhou.");
         }
 
         if (status.status === "expired") {
           spinner?.fail(chalk.red("Pagamento expirado."));
-          throw new Error("Pagamento expirado.");
+          throw new Error(
+            "O tempo para pagamento expirou.\n\n" +
+            "  Próximos passos:\n" +
+            "    1. Execute novamente: ajusta cv <arquivo>\n" +
+            "    2. Um novo código PIX será gerado",
+          );
         }
 
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
