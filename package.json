@@ -1,6 +1,6 @@
 {
   "name": "ajusta",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "CLI para análise ATS e otimização de currículos — by AjustaCV",
   "type": "module",
   "bin": {
