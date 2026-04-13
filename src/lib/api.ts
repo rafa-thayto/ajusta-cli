@@ -57,7 +57,19 @@ async function apiRequest<T>(
 
 // ── Public API ──────────────────────────────────────────────────────
 
-export async function submitCv(input: string): Promise<CliOrderResponse> {
+export interface SubmitCvOptions {
+  name?: string;
+  email?: string;
+  cpf?: string;
+  phone?: string;
+  language?: string;
+  jobDescription?: string;
+}
+
+export async function submitCv(
+  input: string,
+  opts: SubmitCvOptions = {},
+): Promise<CliOrderResponse> {
   const resolved = resolveInput(input);
 
   const formData = new FormData();
@@ -73,6 +85,13 @@ export async function submitCv(input: string): Promise<CliOrderResponse> {
   }
 
   formData.append("source", "cli");
+
+  if (opts.name) formData.append("name", opts.name);
+  if (opts.email) formData.append("email", opts.email);
+  if (opts.cpf) formData.append("cpf", opts.cpf);
+  if (opts.phone) formData.append("phone", opts.phone);
+  if (opts.language) formData.append("language", opts.language);
+  if (opts.jobDescription) formData.append("jobDescription", opts.jobDescription);
 
   return apiRequest<CliOrderResponse>("/cli/cv", {
     method: "POST",

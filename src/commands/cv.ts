@@ -13,12 +13,12 @@ import { withSpinner } from "../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../lib/output.js";
 import { log } from "../lib/logger.js";
 import { saveLastOrder } from "../lib/config.js";
+import { collectCheckoutForm } from "../lib/prompts.js";
 import { FileError, TimeoutError } from "../lib/errors.js";
 import { isTTY } from "../lib/tty.js";
 import {
   DEFAULT_OUTPUT,
   POLL_INTERVAL_MS,
-  TIMEOUT_MS,
 } from "../lib/constants.js";
 
 export const cvCommand = new Command("cv")
@@ -50,11 +50,16 @@ export const cvCommand = new Command("cv")
     "Timeout em minutos para aguardar processamento",
     "30",
   )
+  .option(
+    "-i, --interactive",
+    "Modo interativo: preenche nome, email, CPF, etc. no terminal",
+  )
   .addHelpText(
     "after",
     `
 Exemplos:
   $ ajusta cv meu-curriculo.pdf
+  $ ajusta cv meu-curriculo.pdf -i
   $ ajusta cv meu-curriculo.docx -o resultado.pdf
   $ ajusta cv meu-curriculo.pdf --json
   $ ajusta cv meu-curriculo.pdf --force --timeout 60
@@ -71,6 +76,7 @@ Códigos de erro:
     try {
       const output = opts.output as string;
       const force = opts.force as boolean | undefined;
+      const interactive = opts.interactive as boolean | undefined;
       const timeoutMin = parseInt(opts.timeout as string, 10);
       const timeoutMs = (isNaN(timeoutMin) ? 30 : timeoutMin) * 60 * 1_000;
 
@@ -82,10 +88,16 @@ Códigos de erro:
         );
       }
 
+      // ── Interactive form ─────────────────────────────────────────
+      let formData = {};
+      if (interactive && isTTY()) {
+        formData = await collectCheckoutForm();
+      }
+
       // ── 1. Submit CV ─────────────────────────────────────────────
       const order = await withSpinner(
         "Enviando currículo...",
-        () => submitCv(input),
+        () => submitCv(input, formData),
         { successText: "Currículo enviado!" },
       );
 
