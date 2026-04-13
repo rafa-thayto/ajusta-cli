@@ -1,13 +1,13 @@
 import { Command } from "commander";
+import { execFileSync } from "node:child_process";
 import chalk from "chalk";
 import { checkForUpdatesExplicit } from "../lib/update.js";
 import { withSpinner } from "../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../lib/output.js";
 import { log } from "../lib/logger.js";
-import { VERSION } from "../lib/constants.js";
 
 export const updateCommand = new Command("update")
-  .description("Verifica se há uma nova versão disponível")
+  .description("Atualiza o CLI para a versão mais recente")
   .addHelpText(
     "after",
     `
@@ -34,15 +34,28 @@ Variáveis de ambiente:
       process.stderr.write(`\n  ${chalk.bold("Versão atual:")}  ${chalk.dim(result.current)}\n`);
       process.stderr.write(`  ${chalk.bold("Última versão:")} ${chalk.dim(result.latest || "desconhecida")}\n\n`);
 
-      if (result.updateAvailable) {
-        log.success(
-          `Atualização disponível! ${chalk.yellow(result.current)} ${chalk.dim("\u2192")} ${chalk.cyan(result.latest)}`,
-        );
-        process.stderr.write(`\n  ${chalk.bold("Execute:")}\n`);
-        process.stderr.write(`    ${chalk.cyan("npm install -g ajusta")}\n\n`);
-      } else {
+      if (!result.updateAvailable) {
         log.success("Você está usando a versão mais recente!");
+        return;
       }
+
+      log.success(
+        `Atualização disponível! ${chalk.yellow(result.current)} ${chalk.dim("\u2192")} ${chalk.cyan(result.latest)}`,
+      );
+      process.stderr.write("\n");
+
+      // Auto-update via npm
+      await withSpinner(
+        `Instalando ajusta@${result.latest}...`,
+        async () => {
+          execFileSync("npm", ["install", "-g", `ajusta@${result.latest}`], {
+            stdio: "pipe",
+          });
+        },
+        { successText: chalk.green(`Atualizado para ${result.latest}!`) },
+      );
+
+      process.stderr.write(`\n  ${chalk.dim("Execute")} ${chalk.cyan("ajusta --version")} ${chalk.dim("para confirmar.")}\n\n`);
     } catch (err) {
       outputError(err);
     }
