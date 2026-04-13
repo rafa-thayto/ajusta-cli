@@ -4,8 +4,10 @@ import { configureLogger } from "./lib/logger.js";
 import { setJsonMode, outputError } from "./lib/output.js";
 import { stopActiveSpinner } from "./lib/spinner.js";
 import { EXIT_SIGINT } from "./lib/errors.js";
+import { checkForUpdates } from "./lib/update.js";
 import { cvCommand } from "./commands/cv.js";
 import { statusCommand } from "./commands/status.js";
+import { updateCommand } from "./commands/update.js";
 
 // ── Global exit handlers ────────────────────────────────────────────
 
@@ -52,6 +54,7 @@ const program = new Command()
 
 program.addCommand(cvCommand);
 program.addCommand(statusCommand);
+program.addCommand(updateCommand);
 
 // Show help when no command is provided
 program.action(() => {
@@ -65,13 +68,24 @@ Exemplos:
   $ ajusta cv meu-curriculo.pdf
   $ ajusta cv curriculo.docx -o resultado.pdf
   $ ajusta status 507f1f77bcf86cd799439011
-  $ ajusta cv curriculo.pdf --json | jq .orderId
+  $ ajusta update
 
 Variáveis de ambiente:
-  AJUSTA_API_URL    URL da API (padrão: https://api.ajustacv.com)
+  AJUSTA_API_URL              URL da API (padrão: https://api.ajustacv.com)
+  AJUSTA_NO_UPDATE_CHECK=1    Desabilita verificação automática de atualizações
 
 https://ajustacv.com — Otimize seu currículo com IA
 `,
 );
 
-program.parse();
+// Parse and run, then check for updates in the background
+program
+  .parseAsync()
+  .then(() => {
+    // Skip background check if user ran `update` explicitly
+    const ran = program.args[0];
+    if (ran === "update") return;
+
+    return checkForUpdates().catch(() => {});
+  })
+  .catch(() => {});
