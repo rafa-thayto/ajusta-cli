@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import pkg from "./package.json" with { type: "json" };
 
 export default defineConfig({
   entry: ["src/index.ts"],
@@ -7,5 +8,8 @@ export default defineConfig({
   clean: true,
   banner: {
     js: "#!/usr/bin/env node",
+  },
+  define: {
+    PKG_VERSION: JSON.stringify(pkg.version),
   },
 });

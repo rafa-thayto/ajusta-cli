@@ -1,82 +1,61 @@
 import { Command } from "commander";
-import chalk from "chalk";
-import ora from "ora";
-import { submitCv, pollOrderStatus, downloadResult } from "./api.js";
-import { displayPaymentInfo, statusLabel } from "./display.js";
+import { VERSION } from "./lib/constants.js";
+import { configureLogger } from "./lib/logger.js";
+import { setJsonMode, outputError } from "./lib/output.js";
+import { stopActiveSpinner } from "./lib/spinner.js";
+import { EXIT_SIGINT } from "./lib/errors.js";
+import { cvCommand } from "./commands/cv.js";
+import { statusCommand } from "./commands/status.js";
 
-const program = new Command();
+// ── Global exit handlers ────────────────────────────────────────────
 
-program
+process.on("SIGINT", () => {
+  stopActiveSpinner();
+  process.stderr.write("\n");
+  process.exit(EXIT_SIGINT);
+});
+
+process.on("uncaughtException", (err) => {
+  outputError(err);
+});
+
+process.on("unhandledRejection", (err) => {
+  outputError(err);
+});
+
+// ── Program ─────────────────────────────────────────────────────────
+
+const program = new Command()
   .name("ajusta")
   .description("Otimize seu currículo com IA — by AjustaCV")
-  .version("1.0.0");
-
-program
-  .command("cv")
-  .description("Envia seu currículo para otimização ATS com IA")
-  .argument("<input>", "Caminho para o arquivo (PDF/DOCX) ou conteúdo em base64")
-  .option("-o, --output <caminho>", "Caminho para salvar o resultado", "curriculo-ajustado.pdf")
-  .action(async (input: string, opts: { output: string }) => {
-    // 1. Submit CV
-    const submitSpinner = ora("Enviando currículo...").start();
-
-    let order;
-    try {
-      order = await submitCv(input);
-      submitSpinner.succeed("Currículo enviado!");
-    } catch (err: unknown) {
-      submitSpinner.fail(chalk.red((err as Error).message));
-      process.exit(1);
-    }
-
-    // 2. Show payment info
-    displayPaymentInfo(order);
-
-    // 3. Poll for payment + processing
-    const pollSpinner = ora(statusLabel("pending_payment")).start();
-
-    try {
-      let lastStatus = "";
-      while (true) {
-        const status = await pollOrderStatus(order.orderId);
-
-        if (status.status !== lastStatus) {
-          pollSpinner.text = statusLabel(status.status, status.processingStep);
-          lastStatus = status.status;
-        }
-
-        if (status.status === "completed") {
-          pollSpinner.succeed(chalk.green("Currículo otimizado com sucesso!"));
-
-          // 4. Download result
-          const dlSpinner = ora("Baixando resultado...").start();
-          await downloadResult(order.orderId, opts.output);
-          dlSpinner.succeed(chalk.green(`Salvo em: ${opts.output}`));
-          break;
-        }
-
-        if (status.status === "failed") {
-          pollSpinner.fail(chalk.red("Processamento falhou. Tente novamente ou acesse ajustacv.com"));
-          process.exit(1);
-        }
-
-        if (status.status === "expired") {
-          pollSpinner.fail(chalk.red("Pagamento expirado."));
-          process.exit(1);
-        }
-
-        // Wait 3s between polls
-        await new Promise((r) => setTimeout(r, 3000));
-      }
-    } catch (err: unknown) {
-      pollSpinner.fail(chalk.red((err as Error).message));
-      process.exit(1);
-    }
-
-    console.log();
-    console.log(chalk.cyan("  Obrigado por usar AjustaCV! 🚀"));
-    console.log(chalk.dim("  https://ajustacv.com"));
-    console.log();
+  .version(VERSION, "-v, --version")
+  .option("--json", "Saída em JSON (automático quando stdout é pipe)")
+  .option("--verbose", "Exibir informações de debug")
+  .hook("preAction", (thisCommand) => {
+    const opts = thisCommand.opts();
+    const json = !!opts.json;
+    const verbose = !!opts.verbose;
+    setJsonMode(json);
+    configureLogger({ json, verbose });
   });
+
+program.addCommand(cvCommand);
+program.addCommand(statusCommand);
+
+program.addHelpText(
+  "after",
+  `
+Exemplos:
+  $ ajusta cv meu-curriculo.pdf
+  $ ajusta cv curriculo.docx -o resultado.pdf
+  $ ajusta status 507f1f77bcf86cd799439011
+  $ ajusta cv curriculo.pdf --json | jq .orderId
+
+Variáveis de ambiente:
+  AJUSTA_API_URL    URL da API (padrão: https://api.ajustacv.com)
+
+https://ajustacv.com — Otimize seu currículo com IA
+`,
+);
 
 program.parse();
