@@ -1,0 +1,48 @@
+{
+  "name": "ajusta",
+  "version": "1.0.0",
+  "description": "CLI para análise ATS e otimização de currículos — by AjustaCV",
+  "type": "module",
+  "bin": {
+    "ajusta": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ats",
+    "resume",
+    "cv",
+    "curriculo",
+    "ajustacv",
+    "cli",
+    "career"
+  ],
+  "author": "AjustaCV",
+  "license": "MIT",
+  "homepage": "https://ajustacv.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ajustacv/ajusta-cli"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "mime-types": "^2.1.35",
+    "ora": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/mime-types": "^2.1.4",
+    "@types/node": "^22.15.3",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3"
+  }
+}
