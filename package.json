@@ -13,7 +13,9 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "prepublishOnly": "npm run build",
-    "release": "npm version minor && npm publish && git push origin main --tags"
+    "release": "./scripts/release.sh minor",
+    "release:patch": "./scripts/release.sh patch",
+    "release:major": "./scripts/release.sh major"
   },
   "keywords": [
     "ats",
