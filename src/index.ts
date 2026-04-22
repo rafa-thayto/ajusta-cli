@@ -6,6 +6,7 @@ import { stopActiveSpinner } from "./lib/spinner.js";
 import { EXIT_SIGINT } from "./lib/errors.js";
 import { checkForUpdates } from "./lib/update.js";
 import { improveCommand } from "./commands/improve.js";
+import { createCommand } from "./commands/create.js";
 import { cvCommand } from "./commands/cv.js";
 import { atsCommand } from "./commands/ats.js";
 import { photoCommand } from "./commands/photo.js";
@@ -61,6 +62,7 @@ const program = new Command()
   });
 
 program.addCommand(improveCommand);
+program.addCommand(createCommand);
 program.addCommand(photoCommand);
 program.addCommand(atsCommand);
 program.addCommand(couponCommand);
