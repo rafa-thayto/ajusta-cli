@@ -90,6 +90,14 @@ Exemplos:
   $ ajusta status 507f1f77bcf86cd799439011
   $ ajusta update
 
+Usa Claude Code?
+  Instale a skill oficial (ajusta-cv) para que o Claude entenda cada
+  comando e automatize fluxos de currículo:
+
+    $ ajusta install-skill
+
+  Depois reinicie o Claude Code. A skill fica em ~/.claude/skills/ajusta-cv/.
+
 Variáveis de ambiente:
   AJUSTA_API_URL              URL da API (padrão: https://api.ajustacv.com)
   AJUSTA_NO_UPDATE_CHECK=1    Desabilita verificação automática de atualizações
