@@ -75,7 +75,7 @@ export function parseResumeSpecFile(filePath: string): PartialSpec {
   } catch {
     throw new FileError(`JSON inválido em ${abs}`, "invalid_spec");
   }
-  if (!raw || typeof raw !== "object") {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new FileError(`JSON deve ser um objeto em ${abs}`, "invalid_spec");
   }
   return raw as PartialSpec;

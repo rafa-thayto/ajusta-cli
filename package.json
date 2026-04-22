@@ -7,11 +7,14 @@
     "ajusta": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "skill"
   ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "test": "node --import tsx/esm --test 'test/**/*.test.ts'",
+    "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
     "release": "./scripts/release.sh minor",
     "release:patch": "./scripts/release.sh patch",
@@ -49,6 +52,7 @@
     "@types/node": "^22.15.3",
     "@types/qrcode-terminal": "^0.12.2",
     "tsup": "^8.4.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.3"
   }
 }

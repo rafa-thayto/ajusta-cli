@@ -15,6 +15,7 @@ import { linkedinCommand } from "./commands/linkedin.js";
 import { supportCommand } from "./commands/support.js";
 import { giftCommand } from "./commands/gift.js";
 import { orderCommand } from "./commands/order/index.js";
+import { installSkillCommand } from "./commands/install-skill.js";
 import { statusCommand } from "./commands/status.js";
 import { updateCommand } from "./commands/update.js";
 
@@ -70,6 +71,7 @@ program.addCommand(linkedinCommand);
 program.addCommand(giftCommand);
 program.addCommand(supportCommand);
 program.addCommand(orderCommand);
+program.addCommand(installSkillCommand);
 program.addCommand(cvCommand);
 program.addCommand(statusCommand);
 program.addCommand(updateCommand);
