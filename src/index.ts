@@ -8,6 +8,10 @@ import { checkForUpdates } from "./lib/update.js";
 import { improveCommand } from "./commands/improve.js";
 import { cvCommand } from "./commands/cv.js";
 import { atsCommand } from "./commands/ats.js";
+import { couponCommand } from "./commands/coupon.js";
+import { linkedinCommand } from "./commands/linkedin.js";
+import { supportCommand } from "./commands/support.js";
+import { giftCommand } from "./commands/gift.js";
 import { statusCommand } from "./commands/status.js";
 import { updateCommand } from "./commands/update.js";
 
@@ -56,6 +60,10 @@ const program = new Command()
 
 program.addCommand(improveCommand);
 program.addCommand(atsCommand);
+program.addCommand(couponCommand);
+program.addCommand(linkedinCommand);
+program.addCommand(giftCommand);
+program.addCommand(supportCommand);
 program.addCommand(cvCommand);
 program.addCommand(statusCommand);
 program.addCommand(updateCommand);
