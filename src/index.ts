@@ -8,6 +8,7 @@ import { checkForUpdates } from "./lib/update.js";
 import { improveCommand } from "./commands/improve.js";
 import { cvCommand } from "./commands/cv.js";
 import { atsCommand } from "./commands/ats.js";
+import { photoCommand } from "./commands/photo.js";
 import { couponCommand } from "./commands/coupon.js";
 import { linkedinCommand } from "./commands/linkedin.js";
 import { supportCommand } from "./commands/support.js";
@@ -60,6 +61,7 @@ const program = new Command()
   });
 
 program.addCommand(improveCommand);
+program.addCommand(photoCommand);
 program.addCommand(atsCommand);
 program.addCommand(couponCommand);
 program.addCommand(linkedinCommand);
