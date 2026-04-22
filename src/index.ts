@@ -5,6 +5,7 @@ import { setJsonMode, outputError } from "./lib/output.js";
 import { stopActiveSpinner } from "./lib/spinner.js";
 import { EXIT_SIGINT } from "./lib/errors.js";
 import { checkForUpdates } from "./lib/update.js";
+import { improveCommand } from "./commands/improve.js";
 import { cvCommand } from "./commands/cv.js";
 import { statusCommand } from "./commands/status.js";
 import { updateCommand } from "./commands/update.js";
@@ -52,6 +53,7 @@ const program = new Command()
     configureLogger({ json, verbose });
   });
 
+program.addCommand(improveCommand);
 program.addCommand(cvCommand);
 program.addCommand(statusCommand);
 program.addCommand(updateCommand);
@@ -65,8 +67,8 @@ program.addHelpText(
   "after",
   `
 Exemplos:
-  $ ajusta cv meu-curriculo.pdf
-  $ ajusta cv curriculo.docx -o resultado.pdf
+  $ ajusta improve meu-curriculo.pdf
+  $ ajusta improve curriculo.docx -o resultado.pdf
   $ ajusta status 507f1f77bcf86cd799439011
   $ ajusta update
 
