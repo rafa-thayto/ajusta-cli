@@ -12,9 +12,10 @@ import { isJsonMode, outputResult, outputError } from "../lib/output.js";
 import { log } from "../lib/logger.js";
 import { saveLastOrder } from "../lib/config.js";
 import { collectCheckoutForm, type PartialFormData } from "../lib/prompts.js";
-import { CliError, FileError } from "../lib/errors.js";
+import { CliError, EXIT_USAGE, FileError } from "../lib/errors.js";
 import { isTTY } from "../lib/tty.js";
 import { resolveInput } from "../lib/input.js";
+import { validateCheckout } from "../lib/validation.js";
 import { DEFAULT_OUTPUT } from "../lib/constants.js";
 
 /**
@@ -100,6 +101,21 @@ Exemplos:
         let formData: PartialFormData = prefilled;
         if (interactive) {
           formData = await collectCheckoutForm(prefilled);
+        }
+
+        // ── Validate required checkout fields ─────────────────────────
+        // Without these, the API returns an opaque 500. Catch it locally
+        // with a precise hint so users know what to do.
+        const checkout = validateCheckout(formData);
+        if (!checkout.valid) {
+          const hint = isTTY()
+            ? "Use -i para preencher interativamente, ou forneça as flags: --name, --email, --cpf, --phone."
+            : "Forneça as flags: --name, --email, --cpf, --phone (ou rode com -i em um terminal).";
+          throw new CliError(
+            `Dados de checkout obrigatórios faltando:\n  - ${checkout.errors.join("\n  - ")}\n\n  ${hint}`,
+            "invalid_argument",
+            EXIT_USAGE,
+          );
         }
 
         const resume = resolveInput(input);
