@@ -1,16 +1,14 @@
 import { Command } from "commander";
-import chalk from "chalk";
-import { pollOrderStatus } from "../lib/api.js";
-import { displayOrderStatus } from "../lib/display.js";
+import { getOrder } from "../lib/api.js";
+import { displayFullOrderInfo } from "../lib/display.js";
 import { withSpinner } from "../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../lib/output.js";
-import { getLastOrder } from "../lib/config.js";
-import { log } from "../lib/logger.js";
+import { getLastOrderId } from "../lib/config.js";
 import { CliError, EXIT_USAGE } from "../lib/errors.js";
 
 export const statusCommand = new Command("status")
   .alias("s")
-  .description("Consulta o status de um pedido")
+  .description("Consulta o status de um pedido (atalho para `ajusta order get`)")
   .argument("[orderId]", "ID do pedido (usa o último pedido se omitido)")
   .addHelpText(
     "after",
@@ -23,7 +21,7 @@ Exemplos:
   )
   .action(async (orderIdArg?: string) => {
     try {
-      const orderId = orderIdArg || getLastOrder();
+      const orderId = orderIdArg || getLastOrderId();
 
       if (!orderId) {
         throw new CliError(
@@ -33,15 +31,12 @@ Exemplos:
         );
       }
 
-      const status = await withSpinner(
-        "Consultando pedido...",
-        () => pollOrderStatus(orderId),
-      );
+      const order = await withSpinner("Consultando pedido...", () => getOrder(orderId));
 
       if (isJsonMode()) {
-        outputResult({ orderId, ...status });
+        outputResult(order);
       } else {
-        displayOrderStatus({ orderId, ...status });
+        displayFullOrderInfo(order);
       }
     } catch (err) {
       outputError(err);

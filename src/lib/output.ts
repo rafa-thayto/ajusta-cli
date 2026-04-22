@@ -1,6 +1,7 @@
 import { isStdoutPiped } from "./tty.js";
 import { log } from "./logger.js";
 import { CliError, EXIT_GENERAL } from "./errors.js";
+import { VERSION, SCHEMA_VERSION } from "./constants.js";
 
 let jsonModeOverride: boolean | null = null;
 
@@ -14,19 +15,34 @@ export function isJsonMode(): boolean {
   return isStdoutPiped();
 }
 
+function wrap(data: unknown): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    _meta: { cliVersion: VERSION, schemaVersion: SCHEMA_VERSION },
+  };
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return { ...base, ...(data as Record<string, unknown>) };
+  }
+  return { ...base, data };
+}
+
 /**
  * Output a success result.
- * - JSON mode: writes JSON to stdout
+ * - JSON mode: writes JSON (wrapped with `_meta`) to stdout
  * - Human mode: calls humanFormat() if provided, otherwise JSON to stdout
  */
 export function outputResult(data: unknown, humanFormat?: () => void) {
   if (isJsonMode()) {
-    log.data(data);
+    log.data(wrap(data));
   } else if (humanFormat) {
     humanFormat();
   } else {
-    log.data(data);
+    log.data(wrap(data));
   }
+}
+
+/** Emit a newline-delimited JSON event (for `--follow` streams). */
+export function outputEvent(data: unknown) {
+  process.stdout.write(JSON.stringify(wrap(data)) + "\n");
 }
 
 /**
@@ -45,7 +61,6 @@ export function outputError(err: unknown): never {
         );
 
   if (cliErr.exitCode === 0) {
-    // UserAbortError — silent exit
     process.exit(0);
   }
 
