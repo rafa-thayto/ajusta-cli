@@ -9,6 +9,7 @@ export const EXIT_SIGINT = 130;
 
 export type FileErrorCode =
   | "file_not_found"
+  | "file_exists"
   | "file_read_error"
   | "file_write_error"
   | "unsupported_format"
@@ -29,6 +30,8 @@ export type ErrorCode =
   | "order_not_found"
   | "order_not_completed"
   | "order_not_failed"
+  | "order_failed"
+  | "order_expired"
   | "edit_limit_reached"
   | "resend_limit_reached"
   | "regen_limit_reached"
@@ -39,27 +42,60 @@ export type ErrorCode =
   | "not_professional_photo"
   | "needs_form_fill"
   | "quota_exceeded"
+  | "doctor_failed"
   | "invalid_argument"
   | "unknown_error";
 
+export interface CliErrorOptions {
+  /** Process exit code. Defaults to EXIT_GENERAL. */
+  exitCode?: number;
+  /**
+   * The next command to run, when there is one. Printed beneath the message
+   * for humans and carried as `error.hint` in the JSON envelope so an agent
+   * can branch on it instead of parsing prose.
+   */
+  hint?: string;
+}
+
 export class CliError extends Error {
+  public readonly code: ErrorCode | string;
+  public readonly exitCode: number;
+  public readonly hint?: string;
+
   constructor(
     message: string,
-    public readonly code: ErrorCode | string,
-    public readonly exitCode: number = EXIT_GENERAL,
+    code: ErrorCode | string,
+    exitCodeOrOptions: number | CliErrorOptions = EXIT_GENERAL,
   ) {
     super(message);
     this.name = "CliError";
+    this.code = code;
+    const options =
+      typeof exitCodeOrOptions === "number"
+        ? { exitCode: exitCodeOrOptions }
+        : exitCodeOrOptions;
+    this.exitCode = options.exitCode ?? EXIT_GENERAL;
+    this.hint = options.hint;
   }
 
   toJSON() {
-    return { error: { message: this.message, code: this.code } };
+    return {
+      error: {
+        message: this.message,
+        code: this.code,
+        exitCode: this.exitCode,
+        ...(this.hint ? { hint: this.hint } : {}),
+      },
+    };
   }
 }
 
 export class FileError extends CliError {
-  constructor(message: string, code: FileErrorCode) {
-    super(message, code, code === "file_not_found" ? EXIT_USAGE : EXIT_GENERAL);
+  constructor(message: string, code: FileErrorCode, hint?: string) {
+    super(message, code, {
+      exitCode: code === "file_not_found" ? EXIT_USAGE : EXIT_GENERAL,
+      hint,
+    });
     this.name = "FileError";
   }
 }
@@ -82,8 +118,11 @@ export class NetworkError extends CliError {
 }
 
 export class TimeoutError extends CliError {
-  constructor(message: string, explicit = false) {
-    super(message, "timeout_error", explicit ? EXIT_TIMEOUT_EXPLICIT : EXIT_TIMEOUT);
+  constructor(message: string, explicit = false, hint?: string) {
+    super(message, "timeout_error", {
+      exitCode: explicit ? EXIT_TIMEOUT_EXPLICIT : EXIT_TIMEOUT,
+      hint,
+    });
     this.name = "TimeoutError";
   }
 }
@@ -95,6 +134,12 @@ export class RateLimitError extends CliError {
   ) {
     super(message, "rate_limit_error", EXIT_API);
     this.name = "RateLimitError";
+  }
+
+  toJSON() {
+    const base = super.toJSON();
+    if (this.retryAfterMs === undefined) return base;
+    return { error: { ...base.error, retryAfterMs: this.retryAfterMs } };
   }
 }
 

@@ -1,12 +1,9 @@
 import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
-import ora from "ora";
 import chalk from "chalk";
 import { submitOrder } from "../lib/api.js";
-import { pollUntilComplete } from "../lib/poll.js";
 import { downloadOrderFile } from "../lib/download.js";
-import { displayPaymentInfo, statusLabel } from "../lib/display.js";
 import { withSpinner } from "../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../lib/output.js";
 import { log } from "../lib/logger.js";
@@ -17,6 +14,17 @@ import { isTTY } from "../lib/tty.js";
 import { resolveInput } from "../lib/input.js";
 import { validateCheckout } from "../lib/validation.js";
 import { DEFAULT_OUTPUT } from "../lib/constants.js";
+import { announceOrder, assertCompleted, timeoutMinutesToMs, waitForOrder } from "../lib/wait.js";
+
+/** Refuse to clobber an output file unless --force was given. */
+export function ensureWritable(output: string, force: boolean | undefined): void {
+  if (!fs.existsSync(output) || force) return;
+  throw new FileError(
+    `Arquivo já existe: ${path.resolve(output)}.`,
+    "file_exists",
+    "Use --force para sobrescrever ou -o <outro-caminho>.",
+  );
+}
 
 /**
  * Build the improve-curriculum command. `deprecated` causes a stderr notice to print
@@ -57,6 +65,7 @@ export function buildImproveCommand(name: string, deprecated = false): Command {
     .option("--job <descricao>", "Descrição da vaga (pula o prompt)")
     .option("--coupon <code>", "Código de cupom de desconto")
     .option("--no-download", "Não baixar o resultado automaticamente")
+    .option("--no-wait", "Cria o pedido e sai; acompanhe com `ajusta order wait`")
     .addHelpText(
       "after",
       `
@@ -67,6 +76,7 @@ Exemplos:
   $ ajusta ${name} curriculo.pdf -i --language pt-BR
   $ ajusta ${name} meu-curriculo.pdf --json
   $ ajusta ${name} meu-curriculo.pdf --force --timeout 60
+  $ ajusta ${name} meu-curriculo.pdf --no-wait --json   # agentes: cria e devolve o PIX
 `,
     )
     .action(async (input: string, opts) => {
@@ -76,18 +86,12 @@ Exemplos:
         }
 
         const output = opts.output as string;
-        const force = opts.force as boolean | undefined;
         const interactive = opts.interactive as boolean | undefined;
         const noDownload = opts.download === false;
-        const timeoutMin = parseInt(opts.timeout as string, 10);
-        const timeoutMs = (isNaN(timeoutMin) ? 30 : timeoutMin) * 60 * 1_000;
+        const noWait = opts.wait === false;
+        const timeoutMs = timeoutMinutesToMs(opts.timeout, 30);
 
-        if (!noDownload && fs.existsSync(output) && !force) {
-          throw new FileError(
-            `Arquivo já existe: ${path.resolve(output)}. Use --force para sobrescrever.`,
-            "file_read_error",
-          );
-        }
+        if (!noDownload && !noWait) ensureWritable(output, opts.force as boolean | undefined);
 
         // ── Collect form data ────────────────────────────────────────
         const prefilled: PartialFormData = {};
@@ -112,9 +116,9 @@ Exemplos:
             ? "Use -i para preencher interativamente, ou forneça as flags: --name, --email, --cpf, --phone."
             : "Forneça as flags: --name, --email, --cpf, --phone (ou rode com -i em um terminal).";
           throw new CliError(
-            `Dados de checkout obrigatórios faltando:\n  - ${checkout.errors.join("\n  - ")}\n\n  ${hint}`,
+            `Dados de checkout obrigatórios faltando:\n  - ${checkout.errors.join("\n  - ")}`,
             "invalid_argument",
-            EXIT_USAGE,
+            { exitCode: EXIT_USAGE, hint },
           );
         }
 
@@ -139,56 +143,12 @@ Exemplos:
         );
 
         saveLastOrder(order.orderId, "improve_curriculum");
-
-        if (isJsonMode()) {
-          outputResult({
-            orderId: order.orderId,
-            paymentUrl: order.paymentUrl,
-            brCode: order.brCode,
-            expiresAt: order.expiresAt,
-            finalPriceCents: order.finalPriceCents,
-            discountCents: order.discountCents,
-            zeroPriceOrder: order.zeroPriceOrder ?? false,
-          });
-        } else {
-          await displayPaymentInfo(order, "improve_curriculum");
-        }
+        await announceOrder(order, "improve_curriculum", { noWait });
+        if (noWait) return;
 
         // ── 2. Poll for payment + processing ────────────────────────
-        const useSpinner = isTTY() && !isJsonMode();
-        const spinner = useSpinner
-          ? ora({ text: statusLabel("pending_payment"), stream: process.stderr }).start()
-          : null;
-
-        const result = await pollUntilComplete(order.orderId, {
-          timeoutMs,
-          onChange: ({ status, processingStep }) => {
-            if (spinner) spinner.text = statusLabel(status, processingStep);
-          },
-        });
-
-        if (result.status === "failed") {
-          spinner?.fail(chalk.red("Processamento falhou."));
-          throw new CliError(
-            "Processamento falhou.\n\n" +
-              "  Próximos passos:\n" +
-              `    1. Tente novamente: ajusta order retry ${order.orderId}\n` +
-              "    2. Verifique se o arquivo não está corrompido\n" +
-              "    3. Acesse https://ajustacv.com para suporte",
-            "api_error",
-          );
-        }
-
-        if (result.status === "expired") {
-          spinner?.fail(chalk.red("Pagamento expirado."));
-          throw new CliError(
-            "O tempo para pagamento expirou.\n\n" +
-              "  Execute novamente para gerar um novo PIX.",
-            "api_error",
-          );
-        }
-
-        spinner?.succeed(chalk.green("Currículo otimizado com sucesso!"));
+        const result = await waitForOrder(order.orderId, { timeoutMs });
+        const completed = assertCompleted(result, order.orderId);
 
         // ── 3. Download (unless --no-download) ─────────────────────
         if (noDownload) {
@@ -196,8 +156,8 @@ Exemplos:
             outputResult({
               orderId: order.orderId,
               status: "completed",
-              atsScoreOriginal: result.order.atsScoreOriginal,
-              atsScoreImproved: result.order.atsScoreImproved,
+              atsScoreOriginal: completed.atsScoreOriginal,
+              atsScoreImproved: completed.atsScoreImproved,
             });
           } else {
             log.info(`Pedido concluído: ${order.orderId}. Baixe com "ajusta order download ${order.orderId}".`);
@@ -217,8 +177,8 @@ Exemplos:
             status: "completed",
             savedTo: dl.savedTo,
             bytes: dl.bytes,
-            atsScoreOriginal: result.order.atsScoreOriginal,
-            atsScoreImproved: result.order.atsScoreImproved,
+            atsScoreOriginal: completed.atsScoreOriginal,
+            atsScoreImproved: completed.atsScoreImproved,
           });
         } else {
           log.info("");

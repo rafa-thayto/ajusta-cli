@@ -1,20 +1,39 @@
-import { getOrder, getOrderPaymentStatus, type OrderDetailResponse, type OrderStatus } from "./api.js";
+import {
+  getOrder as apiGetOrder,
+  getOrderPaymentStatus as apiGetPaymentStatus,
+  type OrderDetailResponse,
+  type OrderStatus,
+  type PaymentStatusResponse,
+} from "./api.js";
 import { POLL_INTERVAL_MS } from "./constants.js";
 import { TimeoutError } from "./errors.js";
+
+export interface PollSnapshot {
+  phase: "payment" | "processing";
+  status: OrderStatus;
+  processingStep?: string | null;
+}
 
 export interface PollOptions {
   /** Milliseconds after which to throw TimeoutError. */
   timeoutMs: number;
   /** Called whenever the status string or processingStep changes. */
-  onChange?: (snapshot: {
-    phase: "payment" | "processing";
-    status: OrderStatus;
-    processingStep?: string | null;
-  }) => void;
+  onChange?: (snapshot: PollSnapshot) => void;
+  /**
+   * Runs once, after payment is confirmed and before processing is polled.
+   * `create` submits the résumé form here; `order wait` uses it to finish a
+   * create order that was left unfilled.
+   */
+  afterPayment?: () => Promise<void>;
   /** Polling interval in ms (default 3000). */
   intervalMs?: number;
   /** Signal to abort early. */
   signal?: AbortSignal;
+  /** Injectable fetchers (tests). Default to the real API client. */
+  fetchers?: {
+    getPaymentStatus: (id: string) => Promise<PaymentStatusResponse>;
+    getOrder: (id: string) => Promise<OrderDetailResponse>;
+  };
 }
 
 export type PollResult =
@@ -33,6 +52,11 @@ export async function pollUntilComplete(
 ): Promise<PollResult> {
   const start = Date.now();
   const interval = opts.intervalMs ?? POLL_INTERVAL_MS;
+  const fetchers = opts.fetchers ?? {
+    getPaymentStatus: apiGetPaymentStatus,
+    getOrder: apiGetOrder,
+  };
+  const checkHint = `ajusta order get ${orderId}`;
 
   let lastPhaseStatus = "";
 
@@ -41,11 +65,13 @@ export async function pollUntilComplete(
     if (opts.signal?.aborted) throw new Error("aborted");
     if (Date.now() - start > opts.timeoutMs) {
       throw new TimeoutError(
-        `Tempo limite excedido aguardando pagamento. Use "ajusta order get ${orderId}" para verificar.`,
+        "Tempo limite excedido aguardando pagamento.",
+        false,
+        checkHint,
       );
     }
 
-    const payment = await getOrderPaymentStatus(orderId);
+    const payment = await fetchers.getPaymentStatus(orderId);
     if (payment.status !== lastPhaseStatus) {
       lastPhaseStatus = payment.status;
       opts.onChange?.({ phase: "payment", status: payment.status });
@@ -56,6 +82,10 @@ export async function pollUntilComplete(
     await sleep(interval, opts.signal);
   }
 
+  if (lastPhaseStatus !== "expired" && opts.afterPayment) {
+    await opts.afterPayment();
+  }
+
   // ── Phase 2: processing ─────────────────────────────────────
   let lastStatus = "";
   let lastStep: string | null = null;
@@ -64,11 +94,13 @@ export async function pollUntilComplete(
     if (opts.signal?.aborted) throw new Error("aborted");
     if (Date.now() - start > opts.timeoutMs) {
       throw new TimeoutError(
-        `Tempo limite excedido aguardando processamento. Use "ajusta order get ${orderId}" para verificar.`,
+        "Tempo limite excedido aguardando processamento.",
+        false,
+        checkHint,
       );
     }
 
-    const order = await getOrder(orderId);
+    const order = await fetchers.getOrder(orderId);
     if (order.status !== lastStatus || order.processingStep !== lastStep) {
       lastStatus = order.status;
       lastStep = order.processingStep ?? null;

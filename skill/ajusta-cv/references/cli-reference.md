@@ -20,8 +20,13 @@ Every `--json` success payload is wrapped:
 ```
 Errors go to **stderr** as:
 ```json
-{ "error": { "message": "...", "code": "..." } }
+{ "error": { "message": "...", "code": "...", "exitCode": 3, "hint": "ajusta order retry <id> --follow" } }
 ```
+`hint`, when present, is the command that fixes it. `rate_limit_error` also carries `retryAfterMs`.
+
+## Paid flows for agents: `--no-wait` → `order wait` → `order download`
+
+`improve`, `create`, `photo` and `order readjust` accept `--no-wait`: create the order, print the order-created JSON (with `next: "ajusta order wait <id>"`) and exit 0. Without it the command blocks until the file is downloaded, which is right for a human and wrong for an agent.
 
 ## Commands
 
@@ -35,19 +40,22 @@ Errors go to **stderr** as:
 -i, --interactive            inquirer wizard in TTY
 --name --email --cpf --phone --language --job
 --coupon <code>
---no-download                stop after creation, print orderId
+--no-wait                    create the order, print it, exit (agents)
+--no-download                wait for completion but do not download
 ```
 
 **JSON on order creation:**
 ```json
 {
   "orderId": "683abc...",
+  "status": "pending_payment",
   "paymentUrl": "https://checkout.abacatepay.com/...",
   "brCode": "00020126...",
   "expiresAt": "2026-04-21T12:00:00.000Z",
   "finalPriceCents": 780,
   "discountCents": 0,
-  "zeroPriceOrder": false
+  "zeroPriceOrder": false,
+  "next": "ajusta order wait 683abc..."
 }
 ```
 
@@ -71,10 +79,10 @@ Errors go to **stderr** as:
 --linkedin <url>             pre-fill via /linkedin/extract
 --name --email --cpf --phone --language --coupon
 -o, --output <path>          default: curriculo-ajustado.pdf
---force --timeout --no-download
+--force --timeout --no-download --no-wait
 ```
 
-Same order-created / completion JSON shape as `improve`.
+Same order-created / completion JSON shape as `improve`. With `--no-wait` the résumé form is saved locally and submitted by `ajusta order wait <id>` once payment lands.
 
 ### `ajusta photo <image>` — professional_photo (R$1.95)
 
@@ -86,7 +94,7 @@ Same order-created / completion JSON shape as `improve`.
 --from <spec.json>           { checkout: {...}, photo: { style, profession? } }
 --name --email --cpf --phone --language --coupon
 -o, --output <path>          default: foto-profissional.png
---force --timeout --no-download
+--force --timeout --no-download --no-wait
 ```
 
 **JSON on completion:**
@@ -181,6 +189,7 @@ Redeem accepts: `-i` · `--name --email --file --text --text-file --job --langua
 | Verb | Purpose |
 |---|---|
 | `get [id]` | Full detail (uses last order if omitted) |
+| `wait [id]` | Block until `completed`; `--timeout <min>` (30), `--stream` (NDJSON event per status change). Exit 3 with `order_failed` / `order_expired` + hint otherwise. Auto-submits a saved create form after payment. |
 | `list-files [id]` | Available files |
 | `download <id>` | `--type <original\|improved\|improved-docx\|improved-latex\|generated-photo\|photo-history>`; `--index N` required for photo-history; `-o path` |
 | `retry <id>` | Requeue failed order; `--follow` to poll |
@@ -188,12 +197,36 @@ Redeem accepts: `-i` · `--name --email --file --text --text-file --job --langua
 | `edit <id>` | `--text | --text-file | -i` (max 5) |
 | `fill <id>` | `--from <resume.json>` for unfilled create_curriculum orders |
 | `readjust-info <id>` | Eligibility + price |
-| `readjust <id>` | `--job | --job-file` · optional `--file` · R$3.40 · max 10 |
+| `readjust <id>` | `--job | --job-file` · optional `--file` · `--no-wait` · R$3.40 · max 10 |
 | `regenerate-photo <id>` | `--style --profession` · max 3 · optional `-o` |
 
 Order mutations respect quotas and emit a `quota_exceeded` error code when exceeded.
 
 ### `ajusta status [id]` — alias for `ajusta order get [id]`
+
+### `ajusta order wait` — JSON on completion
+
+```json
+{
+  "orderId": "683abc...",
+  "status": "completed",
+  "product": "improve_curriculum",
+  "atsScoreOriginal": 45,
+  "atsScoreImproved": 78,
+  "next": "ajusta order download 683abc..."
+}
+```
+With `--stream --json`, one line per status change precedes it:
+`{"_meta":{...},"orderId":"...","phase":"payment"|"processing","status":"...","processingStep":"..."}`.
+
+### `ajusta doctor`
+
+Checks Node ≥18, `GET /health` on the API, a writable config dir, the installed skill (missing, or drifted from the packaged copy) and available updates.
+
+```json
+{ "ok": true, "cliVersion": "1.10.0", "checks": [ { "id": "skill", "status": "warn", "message": "...", "hint": "ajusta install-skill --force" } ] }
+```
+Exit 1 only when a check has `status: "fail"`.
 
 ### `ajusta install-skill [--force]`
 

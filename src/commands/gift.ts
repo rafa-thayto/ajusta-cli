@@ -1,17 +1,15 @@
 import { Command } from "commander";
-import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
-import ora from "ora";
 import { redeemGift, validateGift } from "../lib/api.js";
-import { pollUntilComplete } from "../lib/poll.js";
 import { downloadOrderFile } from "../lib/download.js";
 import { withSpinner } from "../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../lib/output.js";
-import { statusLabel } from "../lib/display.js";
 import { saveLastOrder } from "../lib/config.js";
 import { collectCheckoutForm, type PartialFormData } from "../lib/prompts.js";
-import { CliError, FileError } from "../lib/errors.js";
+import { CliError, EXIT_USAGE } from "../lib/errors.js";
+import { assertCompleted, timeoutMinutesToMs, waitForOrder } from "../lib/wait.js";
+import { ensureWritable } from "./cv.js";
 import { isTTY } from "../lib/tty.js";
 import { resolveInput, resolveTextInput, type ResolvedInput } from "../lib/input.js";
 import { DEFAULT_OUTPUT } from "../lib/constants.js";
@@ -63,16 +61,9 @@ const redeemSub = new Command("redeem")
     try {
       const noDownload = opts.download === false;
       const output = opts.output as string;
-      const force = opts.force as boolean | undefined;
-      const timeoutMin = parseInt(opts.timeout as string, 10);
-      const timeoutMs = (isNaN(timeoutMin) ? 30 : timeoutMin) * 60 * 1_000;
+      const timeoutMs = timeoutMinutesToMs(opts.timeout, 30);
 
-      if (!noDownload && fs.existsSync(output) && !force) {
-        throw new FileError(
-          `Arquivo já existe: ${path.resolve(output)}. Use --force para sobrescrever.`,
-          "file_read_error",
-        );
-      }
+      if (!noDownload) ensureWritable(output, opts.force as boolean | undefined);
 
       const prefilled: PartialFormData = {};
       if (opts.name) prefilled.name = opts.name as string;
@@ -85,9 +76,9 @@ const redeemSub = new Command("redeem")
         // Gift flow doesn't require CPF/phone — skip those prompts
         if (!isTTY()) {
           throw new CliError(
-            "Modo interativo requer um terminal. Use --name/--email/--file.",
+            "Modo interativo requer um terminal.",
             "not_interactive",
-            1,
+            { exitCode: EXIT_USAGE, hint: "Use --name, --email e --file." },
           );
         }
         const full = await collectCheckoutForm({
@@ -103,9 +94,9 @@ const redeemSub = new Command("redeem")
 
       if (!formData.name || !formData.email) {
         throw new CliError(
-          "Faltam campos obrigatórios. Use -i ou --name e --email.",
+          "Faltam campos obrigatórios.",
           "invalid_argument",
-          1,
+          { exitCode: EXIT_USAGE, hint: "Use -i ou --name e --email." },
         );
       }
 
@@ -131,26 +122,8 @@ const redeemSub = new Command("redeem")
       if (isJsonMode()) outputResult({ orderId, status: "redeemed" });
       else log.success(`Presente resgatado! Pedido: ${chalk.cyan(orderId)}`);
 
-      const useSpinner = isTTY() && !isJsonMode();
-      const spinner = useSpinner
-        ? ora({ text: statusLabel("paid"), stream: process.stderr }).start()
-        : null;
-
-      const result = await pollUntilComplete(orderId, {
-        timeoutMs,
-        onChange: ({ status, processingStep }) => {
-          if (spinner) spinner.text = statusLabel(status, processingStep);
-        },
-      });
-
-      if (result.status !== "completed") {
-        spinner?.fail();
-        throw new CliError(
-          `Presente terminou com status ${result.status}.`,
-          "api_error",
-        );
-      }
-      spinner?.succeed(chalk.green("Currículo pronto!"));
+      const result = await waitForOrder(orderId, { timeoutMs, initialStatus: "paid" });
+      assertCompleted(result, orderId);
 
       if (noDownload) {
         if (isJsonMode()) outputResult({ orderId, status: "completed" });

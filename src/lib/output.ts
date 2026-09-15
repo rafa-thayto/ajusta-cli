@@ -1,3 +1,4 @@
+import chalk from "chalk";
 import { isStdoutPiped } from "./tty.js";
 import { log } from "./logger.js";
 import { CliError, EXIT_GENERAL } from "./errors.js";
@@ -40,7 +41,7 @@ export function outputResult(data: unknown, humanFormat?: () => void) {
   }
 }
 
-/** Emit a newline-delimited JSON event (for `--follow` streams). */
+/** Emit one newline-delimited JSON event (for `--stream`). */
 export function outputEvent(data: unknown) {
   process.stdout.write(JSON.stringify(wrap(data)) + "\n");
 }
@@ -48,7 +49,7 @@ export function outputEvent(data: unknown) {
 /**
  * Output an error and exit.
  * - JSON mode: JSON error envelope to stderr
- * - Human mode: colored error message to stderr
+ * - Human mode: colored error message (plus the hint, if any) to stderr
  */
 export function outputError(err: unknown): never {
   const cliErr =
@@ -66,9 +67,12 @@ export function outputError(err: unknown): never {
 
   if (isJsonMode()) {
     process.stderr.write(JSON.stringify(cliErr.toJSON()) + "\n");
-  } else {
-    if (cliErr.message) log.error(cliErr.message);
+    process.exit(cliErr.exitCode);
   }
 
+  if (cliErr.message) log.error(cliErr.message);
+  if (cliErr.hint) {
+    process.stderr.write(`    ${chalk.dim("Próximo passo:")} ${chalk.cyan(cliErr.hint)}\n`);
+  }
   process.exit(cliErr.exitCode);
 }

@@ -16,6 +16,7 @@ import { supportCommand } from "./commands/support.js";
 import { giftCommand } from "./commands/gift.js";
 import { orderCommand } from "./commands/order/index.js";
 import { installSkillCommand } from "./commands/install-skill.js";
+import { doctorCommand } from "./commands/doctor.js";
 import { statusCommand } from "./commands/status.js";
 import { updateCommand } from "./commands/update.js";
 
@@ -72,6 +73,7 @@ program.addCommand(giftCommand);
 program.addCommand(supportCommand);
 program.addCommand(orderCommand);
 program.addCommand(installSkillCommand);
+program.addCommand(doctorCommand);
 program.addCommand(cvCommand);
 program.addCommand(statusCommand);
 program.addCommand(updateCommand);
@@ -88,7 +90,14 @@ Exemplos:
   $ ajusta improve meu-curriculo.pdf
   $ ajusta improve curriculo.docx -o resultado.pdf
   $ ajusta status 507f1f77bcf86cd799439011
+  $ ajusta doctor
   $ ajusta update
+
+Para agentes e scripts:
+  $ ajusta improve cv.pdf --no-wait --json     # cria o pedido e devolve o PIX
+  $ ajusta order wait <orderId> --json         # aguarda pagamento + processamento
+  $ ajusta order download <orderId> -o cv.pdf  # baixa o resultado
+  Erros saem em stderr como {"error":{"message","code","exitCode","hint"}}.
 
 Usa Claude Code?
   Instale a skill oficial (ajusta-cv) para que o Claude entenda cada
@@ -100,6 +109,7 @@ Usa Claude Code?
 
 Variáveis de ambiente:
   AJUSTA_API_URL              URL da API (padrão: https://api.ajustacv.com)
+  AJUSTA_API_KEY              Bearer token opcional
   AJUSTA_NO_UPDATE_CHECK=1    Desabilita verificação automática de atualizações
 
 https://ajustacv.com — Otimize seu currículo com IA

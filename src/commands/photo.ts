@@ -2,21 +2,19 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
-import ora from "ora";
 import { select, input as askInput, confirm } from "@inquirer/prompts";
 import { submitOrder } from "../lib/api.js";
-import { pollUntilComplete } from "../lib/poll.js";
 import { downloadOrderFile } from "../lib/download.js";
-import { displayPaymentInfo, statusLabel } from "../lib/display.js";
 import { withSpinner } from "../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../lib/output.js";
 import { log } from "../lib/logger.js";
 import { saveLastOrder } from "../lib/config.js";
 import { collectCheckoutForm, type PartialFormData } from "../lib/prompts.js";
 import { CliError, EXIT_USAGE, FileError } from "../lib/errors.js";
-import { isTTY } from "../lib/tty.js";
 import { resolvePhotoInput } from "../lib/input.js";
 import { DEFAULT_PHOTO_OUTPUT, PHOTO_STYLES } from "../lib/constants.js";
+import { announceOrder, assertCompleted, timeoutMinutesToMs, waitForOrder } from "../lib/wait.js";
+import { ensureWritable } from "./cv.js";
 
 export const photoCommand = new Command("photo")
   .description("Gera uma foto profissional com IA")
@@ -42,6 +40,7 @@ export const photoCommand = new Command("photo")
   .option("--force", "Sobrescrever arquivo de saída")
   .option("--timeout <minutos>", "Timeout em minutos", "15")
   .option("--no-download", "Não baixar o resultado automaticamente")
+  .option("--no-wait", "Cria o pedido e sai; acompanhe com `ajusta order wait`")
   .addHelpText(
     "after",
     `
@@ -50,7 +49,7 @@ Exemplos:
   $ ajusta photo selfie.jpg --style corporate --profession "Médica" \\
       --name "Dra. Ana" --email "ana@ex.com" --cpf "12345678901" \\
       --phone "11987654321" --json
-  $ ajusta photo selfie.png --from spec.json --json
+  $ ajusta photo selfie.png --from spec.json --no-wait --json
 
 Esquema de --from spec.json:
   {
@@ -63,17 +62,11 @@ Esquema de --from spec.json:
   .action(async (image: string, opts) => {
     try {
       const output = opts.output as string;
-      const force = opts.force as boolean | undefined;
       const noDownload = opts.download === false;
-      const timeoutMin = parseInt(opts.timeout as string, 10);
-      const timeoutMs = (isNaN(timeoutMin) ? 15 : timeoutMin) * 60 * 1_000;
+      const noWait = opts.wait === false;
+      const timeoutMs = timeoutMinutesToMs(opts.timeout, 15);
 
-      if (!noDownload && fs.existsSync(output) && !force) {
-        throw new FileError(
-          `Arquivo já existe: ${path.resolve(output)}. Use --force para sobrescrever.`,
-          "file_read_error",
-        );
-      }
+      if (!noDownload && !noWait) ensureWritable(output, opts.force as boolean | undefined);
 
       const photo = resolvePhotoInput(image);
       if (photo.warn && !isJsonMode()) log.warn(photo.warn);
@@ -154,9 +147,9 @@ Esquema de --from spec.json:
         !formData.phone
       ) {
         throw new CliError(
-          "Dados de checkout incompletos. Use -i ou --name/--email/--cpf/--phone.",
+          "Dados de checkout incompletos.",
           "invalid_argument",
-          EXIT_USAGE,
+          { exitCode: EXIT_USAGE, hint: "Use -i ou --name/--email/--cpf/--phone." },
         );
       }
       if (!style) {
@@ -194,49 +187,14 @@ Esquema de --from spec.json:
       );
 
       saveLastOrder(order.orderId, "professional_photo");
+      await announceOrder(order, "professional_photo", { noWait });
+      if (noWait) return;
 
-      if (isJsonMode()) {
-        outputResult({
-          orderId: order.orderId,
-          paymentUrl: order.paymentUrl,
-          brCode: order.brCode,
-          expiresAt: order.expiresAt,
-          finalPriceCents: order.finalPriceCents,
-          discountCents: order.discountCents,
-          zeroPriceOrder: order.zeroPriceOrder ?? false,
-        });
-      } else {
-        await displayPaymentInfo(order, "professional_photo");
-      }
-
-      const useSpinner = isTTY() && !isJsonMode();
-      const spinner = useSpinner
-        ? ora({ text: statusLabel("pending_payment"), stream: process.stderr }).start()
-        : null;
-
-      const result = await pollUntilComplete(order.orderId, {
+      const result = await waitForOrder(order.orderId, {
         timeoutMs,
-        onChange: ({ status, processingStep }) => {
-          if (spinner)
-            spinner.text = statusLabel(
-              status,
-              processingStep ?? (status === "processing" ? "Gerando foto com IA..." : undefined),
-            );
-        },
+        processingFallback: "Gerando foto com IA...",
       });
-
-      if (result.status === "failed") {
-        spinner?.fail(chalk.red("Geração falhou."));
-        throw new CliError(
-          `Geração de foto falhou. Tente novamente: ajusta order retry ${order.orderId}`,
-          "api_error",
-        );
-      }
-      if (result.status === "expired") {
-        spinner?.fail(chalk.red("Pagamento expirado."));
-        throw new CliError("Pagamento expirado. Execute o comando novamente.", "api_error");
-      }
-      spinner?.succeed(chalk.green("Foto gerada com sucesso!"));
+      assertCompleted(result, order.orderId);
 
       if (noDownload) {
         if (isJsonMode()) outputResult({ orderId: order.orderId, status: "completed" });

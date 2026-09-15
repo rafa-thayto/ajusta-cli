@@ -1,12 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import ora from "ora";
 import { getOrder, retryOrder } from "../../lib/api.js";
-import { pollUntilComplete } from "../../lib/poll.js";
 import { withSpinner } from "../../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../../lib/output.js";
-import { statusLabel } from "../../lib/display.js";
 import { CliError } from "../../lib/errors.js";
+import { assertCompleted, timeoutMinutesToMs, waitForOrder } from "../../lib/wait.js";
 import { isTTY } from "../../lib/tty.js";
 import { log } from "../../lib/logger.js";
 
@@ -40,27 +38,11 @@ export const orderRetryCommand = new Command("retry")
         return;
       }
 
-      const timeoutMin = parseInt(opts.timeout as string, 10);
-      const timeoutMs = (isNaN(timeoutMin) ? 30 : timeoutMin) * 60 * 1_000;
-      const spinner =
-        isTTY() && !isJsonMode()
-          ? ora({ text: statusLabel("processing"), stream: process.stderr }).start()
-          : null;
+      const timeoutMs = timeoutMinutesToMs(opts.timeout, 30);
+      const finalResult = await waitForOrder(orderId, { timeoutMs, initialStatus: "processing" });
+      assertCompleted(finalResult, orderId);
 
-      const finalResult = await pollUntilComplete(orderId, {
-        timeoutMs,
-        onChange: ({ status, processingStep }) => {
-          if (spinner) spinner.text = statusLabel(status, processingStep);
-        },
-      });
-
-      if (finalResult.status === "completed") {
-        spinner?.succeed(chalk.green("Processamento concluído."));
-      } else {
-        spinner?.fail();
-      }
-
-      if (isJsonMode()) outputResult({ orderId, status: finalResult.status });
+      if (isJsonMode()) outputResult({ orderId, status: "completed", next: `ajusta order download ${orderId}` });
     } catch (err) {
       outputError(err);
     }

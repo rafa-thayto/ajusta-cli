@@ -1,12 +1,12 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import fs from "node:fs";
 import path from "node:path";
 import { getOrder, regeneratePhoto } from "../../lib/api.js";
 import { downloadOrderFile } from "../../lib/download.js";
 import { withSpinner } from "../../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../../lib/output.js";
-import { CliError, EXIT_USAGE, FileError } from "../../lib/errors.js";
+import { CliError, EXIT_USAGE } from "../../lib/errors.js";
+import { ensureWritable } from "../cv.js";
 import { DEFAULT_PHOTO_OUTPUT, PHOTO_STYLES } from "../../lib/constants.js";
 import { log } from "../../lib/logger.js";
 
@@ -50,12 +50,7 @@ export const orderRegeneratePhotoCommand = new Command("regenerate-photo")
       }
 
       const output = (opts.output as string | undefined) ?? undefined;
-      if (output && fs.existsSync(output) && !opts.force) {
-        throw new FileError(
-          `Arquivo já existe: ${path.resolve(output)}. Use --force.`,
-          "file_read_error",
-        );
-      }
+      if (output) ensureWritable(output, opts.force as boolean | undefined);
 
       if (!opts.yes && !isJsonMode()) {
         log.info(

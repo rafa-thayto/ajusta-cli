@@ -22,7 +22,7 @@ test("CliError exposes code + exitCode + JSON envelope", () => {
   assert.equal(err.message, "boom");
   assert.equal(err.code, "api_error");
   assert.equal(err.exitCode, EXIT_API);
-  assert.deepEqual(err.toJSON(), { error: { message: "boom", code: "api_error" } });
+  assert.deepEqual(err.toJSON(), { error: { message: "boom", code: "api_error", exitCode: EXIT_API } });
 });
 
 test("CliError defaults exitCode to 1 (general)", () => {
@@ -66,4 +66,25 @@ test("UserAbortError uses EXIT_SUCCESS (silent exit)", () => {
   const err = new UserAbortError();
   assert.equal(err.exitCode, EXIT_SUCCESS);
   assert.equal(err.code, "user_abort");
+});
+
+test("CliError accepts an options object with hint and serialises exitCode + hint", () => {
+  const err = new CliError("nope", "needs_form_fill", { hint: "ajusta order fill o1" });
+  assert.equal(err.exitCode, EXIT_GENERAL);
+  assert.deepEqual(err.toJSON(), {
+    error: { message: "nope", code: "needs_form_fill", exitCode: 1, hint: "ajusta order fill o1" },
+  });
+});
+
+test("RateLimitError JSON carries retryAfterMs only when known", () => {
+  assert.deepEqual(new RateLimitError("slow", 3_000).toJSON(), {
+    error: { message: "slow", code: "rate_limit_error", exitCode: EXIT_API, retryAfterMs: 3_000 },
+  });
+  assert.equal("retryAfterMs" in new RateLimitError("slow").toJSON().error, false);
+});
+
+test("FileError carries an optional hint", () => {
+  const err = new FileError("exists", "file_exists", "use --force");
+  assert.equal(err.hint, "use --force");
+  assert.equal(err.exitCode, EXIT_GENERAL);
 });

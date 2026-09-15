@@ -157,69 +157,65 @@ export interface SupportTicketBody {
 
 // ── Core HTTP helper ────────────────────────────────────────────────
 
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${DEFAULT_API_URL}${path}`;
-  log.debug(`${init?.method ?? "GET"} ${url}`);
-
+function authHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers);
   if (API_KEY && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${API_KEY}`);
   }
-
-  let res: Response;
-  try {
-    res = await fetch(url, { ...init, headers });
-  } catch (err) {
-    throw new NetworkError(
-      `Falha de conexão com a API: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  if (!res.ok) {
-    if (res.status === 429) {
-      const retryAfter = res.headers.get("Retry-After");
-      const retryAfterMs = retryAfter ? Number(retryAfter) * 1000 : undefined;
-      const body = await res.json().catch(() => ({}));
-      const message =
-        (body as { error?: string }).error || "Limite de requisições excedido.";
-      throw new RateLimitError(message, retryAfterMs);
-    }
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    const message =
-      (body as { error?: string }).error || `Erro da API: ${res.status}`;
-    throw new ApiError(message, res.status);
-  }
-
-  return res.json() as Promise<T>;
+  return headers;
 }
 
-/** Returns a raw Response for streaming (file downloads). */
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  return body.error || fallback;
+}
+
+/**
+ * Returns a raw Response (for streaming downloads). Every non-OK status is
+ * mapped to a typed error here, so `apiRequest` and the download path cannot
+ * disagree about what a 429 means.
+ */
 export async function rawRequest(path: string, init?: RequestInit): Promise<Response> {
   const url = `${DEFAULT_API_URL}${path}`;
   log.debug(`${init?.method ?? "GET"} ${url}`);
 
-  const headers = new Headers(init?.headers);
-  if (API_KEY && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${API_KEY}`);
-  }
-
   let res: Response;
   try {
-    res = await fetch(url, { ...init, headers });
+    res = await fetch(url, { ...init, headers: authHeaders(init) });
   } catch (err) {
     throw new NetworkError(
       `Falha de conexão com a API: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    const message =
-      (body as { error?: string }).error || `Erro da API: ${res.status}`;
-    throw new ApiError(message, res.status);
+  if (res.ok) return res;
+
+  if (res.status === 429) {
+    const retryAfter = res.headers.get("Retry-After");
+    const retryAfterSeconds = retryAfter ? Number(retryAfter) : NaN;
+    const retryAfterMs = Number.isFinite(retryAfterSeconds) ? retryAfterSeconds * 1000 : undefined;
+    const message = await readErrorMessage(res, "Limite de requisições excedido.");
+    throw new RateLimitError(message, retryAfterMs);
   }
 
-  return res;
+  const message = await readErrorMessage(res, `Erro da API: ${res.status}`);
+  throw new ApiError(message, res.status);
+}
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await rawRequest(path, init);
+  return res.json() as Promise<T>;
+}
+
+// ── Health ──────────────────────────────────────────────────────────
+
+export interface HealthResponse {
+  status: string;
+}
+
+/** `GET /health` with its own short timeout — used by `ajusta doctor`. */
+export function getHealth(timeoutMs = 5_000): Promise<HealthResponse> {
+  return apiRequest<HealthResponse>("/health", { signal: AbortSignal.timeout(timeoutMs) });
 }
 
 // ── Orders — creation and mutation ──────────────────────────────────

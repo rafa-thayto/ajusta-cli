@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { orderGetCommand } from "./get.js";
+import { orderWaitCommand } from "./wait.js";
 import { orderListFilesCommand } from "./list-files.js";
 import { orderDownloadCommand } from "./download.js";
 import { orderRetryCommand } from "./retry.js";
@@ -13,6 +14,7 @@ import { orderRegeneratePhotoCommand } from "./regenerate-photo.js";
 export const orderCommand = new Command("order")
   .description("Operações sobre pedidos existentes")
   .addCommand(orderGetCommand)
+  .addCommand(orderWaitCommand)
   .addCommand(orderListFilesCommand)
   .addCommand(orderDownloadCommand)
   .addCommand(orderRetryCommand)
@@ -27,6 +29,7 @@ export const orderCommand = new Command("order")
     `
 Exemplos:
   $ ajusta order get 683abc...
+  $ ajusta order wait 683abc... --json
   $ ajusta order download 683abc... --type improved -o cv.pdf
   $ ajusta order edit 683abc... -i
   $ ajusta order readjust 683abc... --job "Nova vaga de Tech Lead"

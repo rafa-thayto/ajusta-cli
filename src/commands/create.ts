@@ -1,18 +1,8 @@
 import { Command } from "commander";
-import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
-import ora from "ora";
-import {
-  extractLinkedIn,
-  fillResume,
-  getOrder,
-  getOrderPaymentStatus,
-  submitOrder,
-} from "../lib/api.js";
-import { pollUntilComplete } from "../lib/poll.js";
+import { extractLinkedIn, fillResume, submitOrder } from "../lib/api.js";
 import { downloadOrderFile } from "../lib/download.js";
-import { displayPaymentInfo, statusLabel } from "../lib/display.js";
 import { withSpinner } from "../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../lib/output.js";
 import { log } from "../lib/logger.js";
@@ -26,9 +16,11 @@ import {
   type PartialSpec,
 } from "../lib/resume-form.js";
 import { validateCheckout, validateResume } from "../lib/validation.js";
-import { CliError, EXIT_USAGE, FileError } from "../lib/errors.js";
+import { CliError, EXIT_USAGE } from "../lib/errors.js";
 import { isTTY } from "../lib/tty.js";
 import { DEFAULT_OUTPUT } from "../lib/constants.js";
+import { announceOrder, assertCompleted, timeoutMinutesToMs, waitForOrder } from "../lib/wait.js";
+import { ensureWritable } from "./cv.js";
 
 export const createCommand = new Command("create")
   .description("Cria um currículo do zero (create_curriculum)")
@@ -45,6 +37,7 @@ export const createCommand = new Command("create")
   .option("--force", "Sobrescrever arquivo de saída")
   .option("--timeout <minutos>", "Timeout em minutos", "30")
   .option("--no-download", "Não baixar o resultado automaticamente")
+  .option("--no-wait", "Cria o pedido e sai; `ajusta order wait` envia o formulário após o pagamento")
   .addHelpText(
     "after",
     `
@@ -53,26 +46,24 @@ Exemplos:
   $ ajusta create --from resume.json --json
   $ ajusta create --linkedin https://linkedin.com/in/fulano -i
   $ ajusta create --from partial.json -i   # híbrido: preenche o que faltar
+  $ ajusta create --from resume.json --no-wait --json   # agentes
 
 Esquema do JSON em --from:
-  Veja skill/ajusta-cv/references/resume-schema.md (após M8).
+  Veja skill/ajusta-cv/references/resume-schema.md.
   Campos mínimos: name, email, cpf, phone, experiences[0].
+
+Com --no-wait, os dados do currículo ficam em ~/.config/ajusta/ e são enviados
+por \`ajusta order wait <id>\` assim que o pagamento for confirmado.
 `,
   )
   .action(async (opts) => {
     try {
       const output = opts.output as string;
-      const force = opts.force as boolean | undefined;
       const noDownload = opts.download === false;
-      const timeoutMin = parseInt(opts.timeout as string, 10);
-      const timeoutMs = (isNaN(timeoutMin) ? 30 : timeoutMin) * 60 * 1_000;
+      const noWait = opts.wait === false;
+      const timeoutMs = timeoutMinutesToMs(opts.timeout, 30);
 
-      if (!noDownload && fs.existsSync(output) && !force) {
-        throw new FileError(
-          `Arquivo já existe: ${path.resolve(output)}. Use --force.`,
-          "file_read_error",
-        );
-      }
+      if (!noDownload && !noWait) ensureWritable(output, opts.force as boolean | undefined);
 
       // ── Build a PartialSpec from --from, inline flags, and LinkedIn ───
       let spec: PartialSpec = {};
@@ -122,7 +113,7 @@ Esquema do JSON em --from:
           throw new CliError(
             "Modo interativo requer um terminal.",
             "not_interactive",
-            EXIT_USAGE,
+            { exitCode: EXIT_USAGE, hint: "Use --from <resume.json> com os dados completos." },
           );
         }
 
@@ -191,81 +182,21 @@ Esquema do JSON em --from:
       );
 
       saveLastOrder(order.orderId, "create_curriculum");
+      // Crash safety: `ajusta order wait` / `ajusta order fill` finish the
+      // order from this file if this process dies before payment lands.
       savePendingCreate(order.orderId, fillBody);
+      await announceOrder(order, "create_curriculum", { noWait });
+      if (noWait) return;
 
-      if (isJsonMode()) {
-        outputResult({
-          orderId: order.orderId,
-          paymentUrl: order.paymentUrl,
-          brCode: order.brCode,
-          expiresAt: order.expiresAt,
-          finalPriceCents: order.finalPriceCents,
-          discountCents: order.discountCents,
-          zeroPriceOrder: order.zeroPriceOrder ?? false,
-        });
-      } else {
-        await displayPaymentInfo(order, "create_curriculum");
-      }
-
-      // ── 2. Wait for payment ──────────────────────────────────────
-      const useSpinner = isTTY() && !isJsonMode();
-      const spinner = useSpinner
-        ? ora({ text: statusLabel("pending_payment"), stream: process.stderr }).start()
-        : null;
-
-      // The create flow has a mid-polling step (fill-resume between payment and
-      // processing), so we run the payment phase inline here rather than via
-      // pollUntilComplete.
-      const start = Date.now();
-      let lastStatus = "";
-      while (true) {
-        if (Date.now() - start > timeoutMs) {
-          spinner?.fail();
-          throw new CliError(
-            `Tempo limite aguardando pagamento. Retome com: ajusta order fill ${order.orderId}`,
-            "timeout_error",
-          );
-        }
-        const payment = await getOrderPaymentStatus(order.orderId);
-        if (payment.status !== lastStatus) {
-          lastStatus = payment.status;
-          if (spinner) spinner.text = statusLabel(payment.status);
-        }
-        if (payment.status === "expired") {
-          spinner?.fail();
-          throw new CliError(
-            "Pagamento expirado. Execute o comando novamente.",
-            "api_error",
-          );
-        }
-        if (payment.status !== "pending_payment") break;
-        await new Promise((r) => setTimeout(r, 3000));
-      }
-
-      // ── 3. Submit fill-resume ────────────────────────────────────
-      spinner && (spinner.text = "Enviando formulário...");
-      await fillResume(order.orderId, fillBody);
-      clearPendingCreate(order.orderId);
-
-      // ── 4. Poll processing → completed ───────────────────────────
-      const result = await pollUntilComplete(order.orderId, {
-        timeoutMs: timeoutMs - (Date.now() - start),
-        onChange: ({ status, processingStep }) => {
-          if (spinner) spinner.text = statusLabel(status, processingStep);
+      // ── 2. Wait for payment, submit the form, wait for processing ─
+      const result = await waitForOrder(order.orderId, {
+        timeoutMs,
+        afterPayment: async () => {
+          await fillResume(order.orderId, fillBody);
+          clearPendingCreate(order.orderId);
         },
       });
-
-      // defensive re-fetch in case onChange didn't fire
-      void (await getOrder(order.orderId));
-
-      if (result.status !== "completed") {
-        spinner?.fail();
-        throw new CliError(
-          `Processamento terminou com status ${result.status}. Tente: ajusta order retry ${order.orderId}`,
-          "api_error",
-        );
-      }
-      spinner?.succeed(chalk.green("Currículo criado com sucesso!"));
+      const completed = assertCompleted(result, order.orderId);
 
       if (noDownload) {
         if (isJsonMode()) outputResult({ orderId: order.orderId, status: "completed" });
@@ -284,7 +215,7 @@ Esquema do JSON em --from:
           status: "completed",
           savedTo: dl.savedTo,
           bytes: dl.bytes,
-          atsScoreImproved: result.order.atsScoreImproved,
+          atsScoreImproved: completed.atsScoreImproved,
         });
       } else {
         log.info(chalk.cyan("Pronto! Obrigado por usar AjustaCV."));

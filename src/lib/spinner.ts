@@ -2,7 +2,7 @@ import ora, { type Ora } from "ora";
 import { isTTY } from "./tty.js";
 import { log } from "./logger.js";
 import { isJsonMode } from "./output.js";
-import { ApiError } from "./errors.js";
+import { ApiError, NetworkError, RateLimitError } from "./errors.js";
 import { MAX_RETRIES } from "./constants.js";
 
 let activeSpinner: Ora | null = null;
@@ -20,11 +20,30 @@ interface SpinnerOpts {
   successText?: string;
 }
 
+/** Longest we will honour a Retry-After header before giving up on the attempt. */
+const MAX_RETRY_AFTER_MS = 30_000;
+
+export function isRetryable(err: unknown): boolean {
+  if (err instanceof RateLimitError) return true;
+  if (err instanceof NetworkError) return true;
+  return err instanceof ApiError && err.statusCode >= 500;
+}
+
+/** Backoff for a given attempt, honouring Retry-After on rate limits. */
+export function retryDelayMs(err: unknown, attempt: number): number {
+  const backoff = Math.pow(2, attempt) * 1_000;
+  if (err instanceof RateLimitError && err.retryAfterMs !== undefined) {
+    return Math.min(Math.max(err.retryAfterMs, backoff), MAX_RETRY_AFTER_MS);
+  }
+  return backoff;
+}
+
 /**
  * Wrap an async operation with a spinner + retry logic.
  *
  * - In JSON/CI mode: runs fn() directly (no spinner), still retries.
- * - Retries on 429 and 5xx with exponential backoff (1s, 2s, 4s).
+ * - Retries on 429, 5xx and connection failures with exponential backoff
+ *   (1s, 2s, 4s); a 429 waits at least its Retry-After.
  */
 export async function withSpinner<T>(
   text: string,
@@ -53,11 +72,7 @@ export async function withSpinner<T>(
     } catch (err) {
       lastError = err;
 
-      const isRetryable =
-        err instanceof ApiError &&
-        (err.statusCode === 429 || err.statusCode >= 500);
-
-      if (!isRetryable || attempt === maxRetries) {
+      if (!isRetryable(err) || attempt === maxRetries) {
         if (spinner) {
           spinner.fail();
           activeSpinner = null;
@@ -65,10 +80,9 @@ export async function withSpinner<T>(
         throw err;
       }
 
-      const delay = Math.pow(2, attempt) * 1_000;
-      log.debug(
-        `Tentativa ${attempt + 1} falhou (HTTP ${(err as ApiError).statusCode}), retentando em ${delay}ms...`,
-      );
+      const delay = retryDelayMs(err, attempt);
+      const reason = err instanceof Error ? err.message : String(err);
+      log.debug(`Tentativa ${attempt + 1} falhou (${reason}), retentando em ${delay}ms...`);
 
       if (spinner) {
         spinner.text = `${text} (tentativa ${attempt + 2}/${maxRetries + 1})`;

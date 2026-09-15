@@ -1,11 +1,11 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import fs from "node:fs";
 import path from "node:path";
 import { withSpinner } from "../../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../../lib/output.js";
 import { downloadOrderFile, type FileType } from "../../lib/download.js";
-import { CliError, EXIT_USAGE, FileError } from "../../lib/errors.js";
+import { CliError, EXIT_USAGE } from "../../lib/errors.js";
+import { ensureWritable } from "../cv.js";
 
 const VALID_TYPES: FileType[] = [
   "original",
@@ -62,12 +62,7 @@ export const orderDownloadCommand = new Command("download")
       const defaultName = `ajusta-${type}-${orderId}${DEFAULT_EXTENSIONS[type]}`;
       const output = (opts.output as string) || defaultName;
 
-      if (fs.existsSync(output) && !opts.force) {
-        throw new FileError(
-          `Arquivo já existe: ${path.resolve(output)}. Use --force para sobrescrever.`,
-          "file_read_error",
-        );
-      }
+      ensureWritable(output, opts.force as boolean | undefined);
 
       const result = await withSpinner(
         `Baixando ${type}...`,

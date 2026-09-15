@@ -2,19 +2,16 @@ import { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
-import ora from "ora";
 import { getReadjustInfo, submitOrder } from "../../lib/api.js";
-import { pollUntilComplete } from "../../lib/poll.js";
 import { downloadOrderFile } from "../../lib/download.js";
 import { withSpinner } from "../../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../../lib/output.js";
-import { displayPaymentInfo, statusLabel } from "../../lib/display.js";
 import { saveLastOrder } from "../../lib/config.js";
 import { CliError, EXIT_USAGE, FileError } from "../../lib/errors.js";
-import { isTTY } from "../../lib/tty.js";
 import { resolveInput } from "../../lib/input.js";
-import { DEFAULT_OUTPUT } from "../../lib/constants.js";
 import { log } from "../../lib/logger.js";
+import { announceOrder, assertCompleted, timeoutMinutesToMs, waitForOrder } from "../../lib/wait.js";
+import { ensureWritable } from "../cv.js";
 
 export const orderReadjustCommand = new Command("readjust")
   .description("Cria um pedido de reajuste para um pedido pai (R$ 3,40)")
@@ -30,6 +27,7 @@ export const orderReadjustCommand = new Command("readjust")
   .option("--force", "Sobrescrever arquivo de saída")
   .option("--timeout <minutos>", "Timeout em minutos", "30")
   .option("--no-download", "Não baixar o resultado automaticamente")
+  .option("--no-wait", "Cria o reajuste e sai; acompanhe com `ajusta order wait`")
   .action(async (orderId: string, opts) => {
     try {
       if (opts.job && opts.jobFile) {
@@ -38,16 +36,10 @@ export const orderReadjustCommand = new Command("readjust")
 
       const output = opts.output as string;
       const noDownload = opts.download === false;
-      const force = opts.force as boolean | undefined;
-      const timeoutMin = parseInt(opts.timeout as string, 10);
-      const timeoutMs = (isNaN(timeoutMin) ? 30 : timeoutMin) * 60 * 1_000;
+      const noWait = opts.wait === false;
+      const timeoutMs = timeoutMinutesToMs(opts.timeout, 30);
 
-      if (!noDownload && fs.existsSync(output) && !force) {
-        throw new FileError(
-          `Arquivo já existe: ${path.resolve(output)}. Use --force para sobrescrever.`,
-          "file_read_error",
-        );
-      }
+      if (!noDownload && !noWait) ensureWritable(output, opts.force as boolean | undefined);
 
       const info = await withSpinner("Validando reajuste...", () =>
         getReadjustInfo(orderId),
@@ -87,42 +79,14 @@ export const orderReadjustCommand = new Command("readjust")
       );
 
       saveLastOrder(newOrder.orderId, "improve_curriculum");
-
-      if (isJsonMode()) {
-        outputResult({
-          orderId: newOrder.orderId,
-          parentOrderId: info.parentOrderId,
-          paymentUrl: newOrder.paymentUrl,
-          brCode: newOrder.brCode,
-          expiresAt: newOrder.expiresAt,
-          finalPriceCents: newOrder.finalPriceCents,
-          discountCents: newOrder.discountCents,
-          zeroPriceOrder: newOrder.zeroPriceOrder ?? false,
-        });
-      } else {
-        await displayPaymentInfo(newOrder, "improve_curriculum");
-      }
-
-      const useSpinner = isTTY() && !isJsonMode();
-      const spinner = useSpinner
-        ? ora({ text: statusLabel("pending_payment"), stream: process.stderr }).start()
-        : null;
-
-      const result = await pollUntilComplete(newOrder.orderId, {
-        timeoutMs,
-        onChange: ({ status, processingStep }) => {
-          if (spinner) spinner.text = statusLabel(status, processingStep);
-        },
+      await announceOrder(newOrder, "improve_curriculum", {
+        noWait,
+        extra: { parentOrderId: info.parentOrderId },
       });
+      if (noWait) return;
 
-      if (result.status !== "completed") {
-        spinner?.fail();
-        throw new CliError(
-          `Reajuste terminou com status ${result.status}.`,
-          "api_error",
-        );
-      }
-      spinner?.succeed(chalk.green("Reajuste concluído!"));
+      const result = await waitForOrder(newOrder.orderId, { timeoutMs });
+      assertCompleted(result, newOrder.orderId);
 
       if (noDownload) {
         if (isJsonMode())

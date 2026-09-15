@@ -90,6 +90,7 @@ Estilos: `linkedin`, `corporate`, `creative`, `casual`.
 
 ```sh
 ajusta order get <orderId>            # detalhes do pedido
+ajusta order wait <orderId>           # aguarda pagamento + processamento
 ajusta order list-files <orderId>     # arquivos disponíveis
 ajusta order download <orderId>       # baixar resultado
 ajusta order edit <orderId>           # editar texto melhorado (máx. 5)
@@ -126,9 +127,10 @@ ajusta support -i
 ajusta support --name "Ana" --email "a@x.com" --message-file mensagem.txt
 ```
 
-### `ajusta update`
+### `ajusta doctor` & `ajusta update`
 
 ```sh
+ajusta doctor    # Node, API, config e a skill do Claude Code (com --json)
 ajusta update
 ```
 
@@ -145,6 +147,18 @@ ajusta improve curriculo.pdf --json > resultado.json
 ```
 
 `--verbose` ativa logs de debug.
+
+### Para agentes e scripts: `--no-wait` → `order wait` → `order download`
+
+Sem `--no-wait`, `improve`, `create`, `photo` e `order readjust` bloqueiam até o arquivo ser baixado (até 30 min). Com `--no-wait` o comando cria o pedido, imprime o PIX em JSON e sai; o resto são dois processos separados e retomáveis:
+
+```sh
+ID=$(ajusta improve cv.pdf --name ... --email ... --cpf ... --phone ... --no-wait --json | jq -r .orderId)
+ajusta order wait "$ID" --json          # sai com 3 + error.hint se falhar/expirar
+ajusta order download "$ID" -o cv.pdf
+```
+
+Erros vão para stderr como `{"error":{"message","code","exitCode","hint"}}` — quando `hint` existe, é o próximo comando a executar.
 
 ## Variáveis de ambiente
 

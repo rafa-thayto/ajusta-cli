@@ -14,7 +14,7 @@ npm install -g ajusta       # version ≥1.9
 ajusta --version
 ```
 
-Always pass `--json` (auto when stdout is piped). Every success payload is wrapped `{ "_meta": { "cliVersion", "schemaVersion": "1" }, ... }`. Errors go to **stderr** as `{ "error": { "message", "code" } }` with typed exit codes (see error table).
+Always pass `--json` (auto when stdout is piped). Every success payload is wrapped `{ "_meta": { "cliVersion", "schemaVersion": "1" }, ... }`. Errors go to **stderr** as `{ "error": { "message", "code", "exitCode", "hint"? } }` with typed exit codes (see error table). **When `hint` is present, it is the command to run next.** If anything looks off, `ajusta doctor --json` diagnoses Node, API, config and this skill's installation.
 
 Env: `AJUSTA_API_URL` (override), `AJUSTA_API_KEY` (optional bearer).
 
@@ -29,14 +29,15 @@ Env: `AJUSTA_API_URL` (override), `AJUSTA_API_KEY` (optional bearer).
 
 **Run `ajusta ats` first** when the user is unsure — free and instant. Scores <60 strongly warrant `improve`.
 
-## Core pattern: order → payment → poll → download
+## Core pattern: create → wait → download
 
-Every paid flow follows the same shape:
+Every paid flow is the same three processes:
 
-1. **Create order** — run the command with `--no-download --json`. Parse stdout:
-   `{ orderId, paymentUrl, brCode, expiresAt, finalPriceCents, discountCents, zeroPriceOrder }`.
+1. **Create order** — run the command with `--no-wait --json`. It exits immediately; parse stdout:
+   `{ orderId, paymentUrl, brCode, expiresAt, finalPriceCents, discountCents, zeroPriceOrder, next }`.
+   (Without `--no-wait` the command blocks up to 30 minutes doing steps 3–4 itself — that is the human mode.)
 2. **Surface payment to the human** — show both `paymentUrl` (browser) and `brCode` (PIX copy-paste). They have 6 minutes (`expiresAt`).
-3. **Poll** every 3s: `ajusta order get <id> --json` → check `.status`. Continue until `completed | failed | expired`.
+3. **Wait** — `ajusta order wait <id> --json` blocks through payment and processing and prints `{ status: "completed", atsScoreOriginal, atsScoreImproved, next }`. Exit 3 with `error.code` `order_failed` or `order_expired` otherwise; follow `error.hint`. Safe to re-run if interrupted. Add `--stream` for one NDJSON line per status change.
 4. **Download** the artifact: `ajusta order download <id> --type improved -o cv.pdf --json`.
 
 | Status | Meaning | Agent action |
@@ -54,9 +55,9 @@ Every paid flow follows the same shape:
 
 **Improve** — see Recipe 1 in [references/agent-recipes.md](references/agent-recipes.md).
 
-**Create from scratch** — build `resume.json` per [references/resume-schema.md](references/resume-schema.md) (minimum: `name`, `email`, `cpf`, `phone`, one `experiences[]` entry), then `ajusta create --from resume.json --no-download --json`. The fill-resume call runs automatically after payment. If the user aborts post-payment, `ajusta order fill <orderId>` resumes from a crash-safety file.
+**Create from scratch** — build `resume.json` per [references/resume-schema.md](references/resume-schema.md) (minimum: `name`, `email`, `cpf`, `phone`, one `experiences[]` entry), then `ajusta create --from resume.json --no-wait --json`. `ajusta order wait <orderId>` submits the résumé form automatically once payment is confirmed (it was saved to `~/.config/ajusta/`). If that file is gone, `order wait` answers `needs_form_fill` and its hint is `ajusta order fill <orderId> --from resume.json`.
 
-**Professional photo** — `ajusta photo selfie.jpg --style linkedin --profession "..." --name "..." --email "..." --cpf "..." --phone "..." --no-download --json`. Style is one of `linkedin | corporate | creative | casual`. Three free regenerations via `ajusta order regenerate-photo <id>`.
+**Professional photo** — `ajusta photo selfie.jpg --style linkedin --profession "..." --name "..." --email "..." --cpf "..." --phone "..." --no-wait --json`. Style is one of `linkedin | corporate | creative | casual`. Three free regenerations via `ajusta order regenerate-photo <id>`.
 
 **ATS score** — `ajusta ats resume.pdf --job-file job.txt --json` (or inline `--job "..."` or piped stdin). Categories: keywords 30%, content 25%, structure 20%, completeness 15%, formatting 10%. Without `--job`, keywords is `null`.
 
@@ -77,7 +78,7 @@ ajusta order download <id> --type photo-history --index 0
 | Op | Command | Max |
 |---|---|---|
 | Edit improved text | `ajusta order edit <id> --text-file edited.md --yes --json` | 5 |
-| Readjust for new job (R$3.40) | `ajusta order readjust <id> --job "..." --no-download --json` | 10 |
+| Readjust for new job (R$3.40) | `ajusta order readjust <id> --job "..." --no-wait --json` | 10 |
 | Regenerate photo | `ajusta order regenerate-photo <id> --style X --yes --json` | 3 |
 | Resend delivery email | `ajusta order resend <id> --yes --json` | 2 |
 
@@ -95,10 +96,14 @@ If `valid === true`, pass `--coupon <code>` to the order command. `finalPriceCen
 
 | Code | Recovery |
 |---|---|
+| any | If `error.hint` is present, run it |
 | `api_error` | Surface `error.message` to user |
-| `network_error` | Retry |
-| `rate_limit_error` | Back off 60s, retry |
-| `timeout_error` | Resume via `ajusta order get <id>` |
+| `order_failed` | `ajusta order retry <id> --follow` (the hint) |
+| `order_expired` | Create a new order — do NOT reuse |
+| `network_error` | Retry (the CLI already retried 3× with backoff) |
+| `rate_limit_error` | Wait `retryAfterMs` (or 60s), retry |
+| `timeout_error` | `ajusta order wait <id>` again |
+| `file_exists` | Pass `--force` or another `-o` |
 | `file_not_found` / `unsupported_format` / `file_too_large` / `photo_too_large` | User error — re-prompt |
 | `edit_limit_reached` / `readjust_limit_reached` / `regen_limit_reached` / `resend_limit_reached` | Quota spent, no retry |
 | `needs_form_fill` | `ajusta order fill <id>` |
@@ -109,4 +114,4 @@ Exit codes: 0 success · 2 usage · 3 API business error · 4 network · 5 timeo
 
 - [references/resume-schema.md](references/resume-schema.md) — JSON schema for `ajusta create --from` with a complete realistic pt-BR example.
 - [references/cli-reference.md](references/cli-reference.md) — Every command, flag, and JSON output shape.
-- [references/agent-recipes.md](references/agent-recipes.md) — Seven copy-pasteable end-to-end flows.
+- [references/agent-recipes.md](references/agent-recipes.md) — Eight copy-pasteable end-to-end flows.

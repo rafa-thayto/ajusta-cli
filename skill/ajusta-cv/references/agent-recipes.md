@@ -2,6 +2,16 @@
 
 Seven copy-pasteable end-to-end flows. Each is a numbered CLI sequence with JSON parsing hints. All commands use `--json` so stdout is pure machine-readable output.
 
+Every paid flow is the same three processes:
+
+```sh
+ajusta <cmd> ... --no-wait --json     # 1. create → { orderId, paymentUrl, brCode, expiresAt, next }
+ajusta order wait <orderId> --json    # 2. block until completed (exit 3 + error.hint on failed/expired)
+ajusta order download <orderId> ...   # 3. fetch the artifact
+```
+
+`order wait` is the only long-running step, and it is resumable: if it dies, run it again. Errors on stderr are `{ "error": { "message", "code", "exitCode", "hint" } }` — when `hint` is present it is the command to run next.
+
 ## Recipe 1 — User uploads an old PDF, wants it improved in English
 
 1. Confirm the file exists and is PDF or DOCX.
@@ -11,11 +21,11 @@ Seven copy-pasteable end-to-end flows. Each is a numbered CLI sequence with JSON
    ajusta improve resume.pdf --language en \
      --name "John Doe" --email "john@example.com" \
      --cpf "12345678909" --phone "11987654321" \
-     --no-download --json
+     --no-wait --json
    ```
 4. Parse stdout → `{ orderId, paymentUrl, brCode, expiresAt }`. **Surface `paymentUrl` + `brCode` to the human.**
-5. Poll every 3s: `ajusta order get <orderId> --json` → read `.status`.
-6. On `status === "completed"`:
+5. Wait: `ajusta order wait <orderId> --json` → `{ status: "completed", atsScoreOriginal, atsScoreImproved }`.
+6. Download:
    ```sh
    ajusta order download <orderId> --type improved -o improved-cv.pdf --json
    ```
@@ -27,16 +37,16 @@ Seven copy-pasteable end-to-end flows. Each is a numbered CLI sequence with JSON
 2. Assemble `resume.json` per [references/resume-schema.md](resume-schema.md).
 3. Create the order:
    ```sh
-   ajusta create --from resume.json --no-download --json
+   ajusta create --from resume.json --no-wait --json
    ```
 4. Parse `{ orderId, paymentUrl, brCode, expiresAt }`. Surface payment.
-5. Poll order until `status === "completed"`.
+5. Wait: `ajusta order wait <orderId> --json`. The résumé form is submitted automatically the moment payment is confirmed (it was saved to `~/.config/ajusta/pending-create-<orderId>.json` at step 3).
 6. Download:
    ```sh
    ajusta order download <orderId> --type improved -o cv.pdf --json
    ```
 
-**Important:** the `--from` JSON is kept in memory and auto-submitted to `/fill-resume` after payment. A crash-safety copy is also written to `~/.config/ajusta/pending-create-<orderId>.json` — `ajusta order fill <orderId>` will use it to recover.
+If `order wait` answers `needs_form_fill` (the pending file is gone — another machine, wiped config), run `ajusta order fill <orderId> --from resume.json --json`, then `order wait` again.
 
 ## Recipe 3 — Check ATS compatibility for a given job (free, no payment)
 
@@ -57,9 +67,9 @@ Seven copy-pasteable end-to-end flows. Each is a numbered CLI sequence with JSON
    ajusta photo selfie.jpg --style linkedin \
      --profession "Engenheira de Dados" \
      --name "..." --email "..." --cpf "..." --phone "..." \
-     --no-download --json
+     --no-wait --json
    ```
-3. Surface payment. Poll.
+3. Surface payment. `ajusta order wait <orderId> --json`.
 4. Download:
    ```sh
    ajusta order download <orderId> --type generated-photo -o linkedin-photo.png --json
@@ -93,13 +103,13 @@ Seven copy-pasteable end-to-end flows. Each is a numbered CLI sequence with JSON
 2. Inspect price: `ajusta order readjust-info <orderId> --json` — always R$3.40.
 3. Create:
    ```sh
-   ajusta order readjust <orderId> --job "<new JD>" --no-download --json
+   ajusta order readjust <orderId> --job "<new JD>" --no-wait --json
    ```
-4. A NEW order is created at R$3.40 — surface new `paymentUrl`, poll, download.
+4. A NEW order is created at R$3.40 — surface new `paymentUrl`, `ajusta order wait <newOrderId> --json`, download.
 
 ## Recipe 7 — Order failed, retry and fall back to support
 
-1. Verify: `ajusta order get <orderId> --json` → `.status === "failed"`.
+1. Verify: `ajusta order get <orderId> --json` → `.status === "failed"`. (An `order wait` that ended with `error.code === "order_failed"` already tells you this; its `hint` is the retry command.)
 2. Retry:
    ```sh
    ajusta order retry <orderId> --follow --json
@@ -111,3 +121,10 @@ Seven copy-pasteable end-to-end flows. Each is a numbered CLI sequence with JSON
      --order-id <orderId> --json
    ```
 4. Advise the user to check their email; support responds there.
+
+## Recipe 8 — Something looks broken
+
+```sh
+ajusta doctor --json
+```
+`{ ok, checks: [{ id, status: "pass"|"warn"|"fail", message, hint? }] }` over Node version, API reachability, config dir, the installed skill (and whether it drifted from the package) and available updates. Run each `hint` that appears. Exit 1 only when a check *fails*.
