@@ -40,7 +40,7 @@ Errors go to **stderr** as:
 -i, --interactive            inquirer wizard in TTY
 --name --email --cpf --phone --language --job
 --coupon <code>
---no-wait                    create the order, print it, exit (agents)
+--no-wait                    create the order, print it, exit (agents; implies --no-download)
 --no-download                wait for completion but do not download
 ```
 
@@ -189,7 +189,7 @@ Redeem accepts: `-i` · `--name --email --file --text --text-file --job --langua
 | Verb | Purpose |
 |---|---|
 | `get [id]` | Full detail (uses last order if omitted) |
-| `wait [id]` | Block until `completed`; `--timeout <min>` (30), `--stream` (NDJSON event per status change). Exit 3 with `order_failed` / `order_expired` + hint otherwise. Auto-submits a saved create form after payment. |
+| `wait [id]` | Block until `completed`; `--timeout <min>` (30), `--stream` (NDJSON event per status change; implies `--json`). Exit 3 with `order_failed` / `order_expired` + hint otherwise. Auto-submits a saved create form after payment. |
 | `list-files [id]` | Available files |
 | `download <id>` | `--type <original\|improved\|improved-docx\|improved-latex\|generated-photo\|photo-history>`; `--index N` required for photo-history; `-o path` |
 | `retry <id>` | Requeue failed order; `--follow` to poll |
@@ -226,7 +226,7 @@ Checks Node ≥18, `GET /health` on the API, a writable config dir, the installe
 ```json
 { "ok": true, "cliVersion": "1.10.0", "checks": [ { "id": "skill", "status": "warn", "message": "...", "hint": "ajusta install-skill --force" } ] }
 ```
-Exit 1 only when a check has `status: "fail"`.
+Exit 1 with `error.code` `doctor_failed` only when a check has `status: "fail"`.
 
 ### `ajusta install-skill [--force]`
 

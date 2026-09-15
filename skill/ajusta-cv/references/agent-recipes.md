@@ -1,6 +1,6 @@
 # Agent Recipes
 
-Seven copy-pasteable end-to-end flows. Each is a numbered CLI sequence with JSON parsing hints. All commands use `--json` so stdout is pure machine-readable output.
+Eight copy-pasteable end-to-end flows. Each is a numbered CLI sequence with JSON parsing hints. All commands use `--json` so stdout is pure machine-readable output.
 
 Every paid flow is the same three processes:
 

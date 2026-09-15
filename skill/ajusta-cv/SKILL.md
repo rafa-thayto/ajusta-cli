@@ -35,9 +35,9 @@ Every paid flow is the same three processes:
 
 1. **Create order** — run the command with `--no-wait --json`. It exits immediately; parse stdout:
    `{ orderId, paymentUrl, brCode, expiresAt, finalPriceCents, discountCents, zeroPriceOrder, next }`.
-   (Without `--no-wait` the command blocks up to 30 minutes doing steps 3–4 itself — that is the human mode.)
+   (Without `--no-wait` the command blocks up to 30 minutes doing steps 3–4 itself — that is the human mode. `--no-wait` implies `--no-download`.)
 2. **Surface payment to the human** — show both `paymentUrl` (browser) and `brCode` (PIX copy-paste). They have 6 minutes (`expiresAt`).
-3. **Wait** — `ajusta order wait <id> --json` blocks through payment and processing and prints `{ status: "completed", atsScoreOriginal, atsScoreImproved, next }`. Exit 3 with `error.code` `order_failed` or `order_expired` otherwise; follow `error.hint`. Safe to re-run if interrupted. Add `--stream` for one NDJSON line per status change.
+3. **Wait** — `ajusta order wait <id> --json` blocks through payment and processing and prints `{ status: "completed", atsScoreOriginal, atsScoreImproved, next }`. Exit 3 with `error.code` `order_failed` or `order_expired` otherwise; follow `error.hint`. Safe to re-run if interrupted. Add `--stream` for one NDJSON line per status change (implies `--json`).
 4. **Download** the artifact: `ajusta order download <id> --type improved -o cv.pdf --json`.
 
 | Status | Meaning | Agent action |
@@ -104,6 +104,7 @@ If `valid === true`, pass `--coupon <code>` to the order command. `finalPriceCen
 | `rate_limit_error` | Wait `retryAfterMs` (or 60s), retry |
 | `timeout_error` | `ajusta order wait <id>` again |
 | `file_exists` | Pass `--force` or another `-o` |
+| `doctor_failed` | `ajusta doctor --json` had a `fail` check — run its `hint` |
 | `file_not_found` / `unsupported_format` / `file_too_large` / `photo_too_large` | User error — re-prompt |
 | `edit_limit_reached` / `readjust_limit_reached` / `regen_limit_reached` / `resend_limit_reached` | Quota spent, no retry |
 | `needs_form_fill` | `ajusta order fill <id>` |

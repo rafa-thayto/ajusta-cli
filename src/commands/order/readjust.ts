@@ -10,8 +10,7 @@ import { saveLastOrder } from "../../lib/config.js";
 import { CliError, EXIT_USAGE, FileError } from "../../lib/errors.js";
 import { resolveInput } from "../../lib/input.js";
 import { log } from "../../lib/logger.js";
-import { announceOrder, assertCompleted, timeoutMinutesToMs, waitForOrder } from "../../lib/wait.js";
-import { ensureWritable } from "../cv.js";
+import { announceOrder, assertCompleted, parsePaidFlowOptions, waitForOrder } from "../../lib/wait.js";
 
 export const orderReadjustCommand = new Command("readjust")
   .description("Cria um pedido de reajuste para um pedido pai (R$ 3,40)")
@@ -26,20 +25,15 @@ export const orderReadjustCommand = new Command("readjust")
   )
   .option("--force", "Sobrescrever arquivo de saída")
   .option("--timeout <minutos>", "Timeout em minutos", "30")
-  .option("--no-download", "Não baixar o resultado automaticamente")
-  .option("--no-wait", "Cria o reajuste e sai; acompanhe com `ajusta order wait`")
+  .option("--no-download", "Aguardar a conclusão sem baixar o resultado")
+  .option("--no-wait", "Cria o reajuste e sai (implica --no-download); acompanhe com `ajusta order wait`")
   .action(async (orderId: string, opts) => {
     try {
       if (opts.job && opts.jobFile) {
         throw new CliError("Use --job OU --job-file.", "invalid_argument", EXIT_USAGE);
       }
 
-      const output = opts.output as string;
-      const noDownload = opts.download === false;
-      const noWait = opts.wait === false;
-      const timeoutMs = timeoutMinutesToMs(opts.timeout, 30);
-
-      if (!noDownload && !noWait) ensureWritable(output, opts.force as boolean | undefined);
+      const { output, noDownload, noWait, timeoutMs } = parsePaidFlowOptions(opts, 30);
 
       const info = await withSpinner("Validando reajuste...", () =>
         getReadjustInfo(orderId),

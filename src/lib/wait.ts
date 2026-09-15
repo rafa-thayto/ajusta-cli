@@ -1,8 +1,10 @@
+import fs from "node:fs";
+import path from "node:path";
 import chalk from "chalk";
 import ora, { type Ora } from "ora";
 import type { OrderCreatedResponse, OrderStatus } from "./api.js";
 import type { Product } from "./constants.js";
-import { CliError, EXIT_API } from "./errors.js";
+import { CliError, EXIT_API, FileError } from "./errors.js";
 import { displayPaymentInfo, statusLabel } from "./display.js";
 import { isJsonMode, outputResult } from "./output.js";
 import { log } from "./logger.js";
@@ -14,6 +16,42 @@ export function timeoutMinutesToMs(raw: unknown, fallbackMinutes: number): numbe
   const parsed = parseInt(String(raw), 10);
   const minutes = Number.isNaN(parsed) || parsed <= 0 ? fallbackMinutes : parsed;
   return minutes * 60 * 1_000;
+}
+
+/** Refuse to clobber an output file unless --force was given. */
+export function ensureWritable(output: string, force: boolean | undefined): void {
+  if (!fs.existsSync(output) || force) return;
+  throw new FileError(
+    `Arquivo já existe: ${path.resolve(output)}.`,
+    "file_exists",
+    "Use --force para sobrescrever ou -o <outro-caminho>.",
+  );
+}
+
+export interface PaidFlowOptions {
+  output: string;
+  noDownload: boolean;
+  noWait: boolean;
+  timeoutMs: number;
+}
+
+/**
+ * The options every paid command shares. `--no-download` and `--no-wait`
+ * both mean "do not write the file", so the output path is only checked
+ * when neither is set.
+ */
+export function parsePaidFlowOptions(
+  opts: Record<string, unknown>,
+  defaultTimeoutMinutes: number,
+): PaidFlowOptions {
+  const parsed = {
+    output: opts.output as string,
+    noDownload: opts.download === false,
+    noWait: opts.wait === false,
+    timeoutMs: timeoutMinutesToMs(opts.timeout, defaultTimeoutMinutes),
+  };
+  if (!parsed.noDownload && !parsed.noWait) ensureWritable(parsed.output, opts.force as boolean | undefined);
+  return parsed;
 }
 
 /** The JSON shape every order-creating command prints, with or without --no-wait. */

@@ -19,8 +19,7 @@ import { validateCheckout, validateResume } from "../lib/validation.js";
 import { CliError, EXIT_USAGE } from "../lib/errors.js";
 import { isTTY } from "../lib/tty.js";
 import { DEFAULT_OUTPUT } from "../lib/constants.js";
-import { announceOrder, assertCompleted, timeoutMinutesToMs, waitForOrder } from "../lib/wait.js";
-import { ensureWritable } from "./cv.js";
+import { announceOrder, assertCompleted, parsePaidFlowOptions, waitForOrder } from "../lib/wait.js";
 
 export const createCommand = new Command("create")
   .description("Cria um currículo do zero (create_curriculum)")
@@ -36,8 +35,8 @@ export const createCommand = new Command("create")
   .option("-o, --output <caminho>", "Caminho para salvar o PDF", DEFAULT_OUTPUT)
   .option("--force", "Sobrescrever arquivo de saída")
   .option("--timeout <minutos>", "Timeout em minutos", "30")
-  .option("--no-download", "Não baixar o resultado automaticamente")
-  .option("--no-wait", "Cria o pedido e sai; `ajusta order wait` envia o formulário após o pagamento")
+  .option("--no-download", "Aguardar a conclusão sem baixar o resultado")
+  .option("--no-wait", "Cria o pedido e sai (implica --no-download); `ajusta order wait` envia o formulário após o pagamento")
   .addHelpText(
     "after",
     `
@@ -58,12 +57,7 @@ por \`ajusta order wait <id>\` assim que o pagamento for confirmado.
   )
   .action(async (opts) => {
     try {
-      const output = opts.output as string;
-      const noDownload = opts.download === false;
-      const noWait = opts.wait === false;
-      const timeoutMs = timeoutMinutesToMs(opts.timeout, 30);
-
-      if (!noDownload && !noWait) ensureWritable(output, opts.force as boolean | undefined);
+      const { output, noDownload, noWait, timeoutMs } = parsePaidFlowOptions(opts, 30);
 
       // ── Build a PartialSpec from --from, inline flags, and LinkedIn ───
       let spec: PartialSpec = {};

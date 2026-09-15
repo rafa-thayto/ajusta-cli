@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import { submitOrder } from "../lib/api.js";
@@ -9,22 +8,12 @@ import { isJsonMode, outputResult, outputError } from "../lib/output.js";
 import { log } from "../lib/logger.js";
 import { saveLastOrder } from "../lib/config.js";
 import { collectCheckoutForm, type PartialFormData } from "../lib/prompts.js";
-import { CliError, EXIT_USAGE, FileError } from "../lib/errors.js";
+import { CliError, EXIT_USAGE } from "../lib/errors.js";
 import { isTTY } from "../lib/tty.js";
 import { resolveInput } from "../lib/input.js";
 import { validateCheckout } from "../lib/validation.js";
 import { DEFAULT_OUTPUT } from "../lib/constants.js";
-import { announceOrder, assertCompleted, timeoutMinutesToMs, waitForOrder } from "../lib/wait.js";
-
-/** Refuse to clobber an output file unless --force was given. */
-export function ensureWritable(output: string, force: boolean | undefined): void {
-  if (!fs.existsSync(output) || force) return;
-  throw new FileError(
-    `Arquivo já existe: ${path.resolve(output)}.`,
-    "file_exists",
-    "Use --force para sobrescrever ou -o <outro-caminho>.",
-  );
-}
+import { announceOrder, assertCompleted, parsePaidFlowOptions, waitForOrder } from "../lib/wait.js";
 
 /**
  * Build the improve-curriculum command. `deprecated` causes a stderr notice to print
@@ -64,8 +53,8 @@ export function buildImproveCommand(name: string, deprecated = false): Command {
     .option("--language <idioma>", "Idioma: pt-BR, en, es, fr, de, it (pula o prompt)")
     .option("--job <descricao>", "Descrição da vaga (pula o prompt)")
     .option("--coupon <code>", "Código de cupom de desconto")
-    .option("--no-download", "Não baixar o resultado automaticamente")
-    .option("--no-wait", "Cria o pedido e sai; acompanhe com `ajusta order wait`")
+    .option("--no-download", "Aguardar a conclusão sem baixar o resultado")
+    .option("--no-wait", "Cria o pedido e sai (implica --no-download); acompanhe com `ajusta order wait`")
     .addHelpText(
       "after",
       `
@@ -85,13 +74,8 @@ Exemplos:
           log.warn(`"ajusta cv" será removido em breve. Use "ajusta improve".`);
         }
 
-        const output = opts.output as string;
+        const { output, noDownload, noWait, timeoutMs } = parsePaidFlowOptions(opts, 30);
         const interactive = opts.interactive as boolean | undefined;
-        const noDownload = opts.download === false;
-        const noWait = opts.wait === false;
-        const timeoutMs = timeoutMinutesToMs(opts.timeout, 30);
-
-        if (!noDownload && !noWait) ensureWritable(output, opts.force as boolean | undefined);
 
         // ── Collect form data ────────────────────────────────────────
         const prefilled: PartialFormData = {};

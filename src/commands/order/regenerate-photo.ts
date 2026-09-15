@@ -6,7 +6,7 @@ import { downloadOrderFile } from "../../lib/download.js";
 import { withSpinner } from "../../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../../lib/output.js";
 import { CliError, EXIT_USAGE } from "../../lib/errors.js";
-import { ensureWritable } from "../cv.js";
+import { ensureWritable } from "../../lib/wait.js";
 import { DEFAULT_PHOTO_OUTPUT, PHOTO_STYLES } from "../../lib/constants.js";
 import { log } from "../../lib/logger.js";
 

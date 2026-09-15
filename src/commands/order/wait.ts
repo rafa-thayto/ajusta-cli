@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { fillResume, getOrder } from "../../lib/api.js";
 import { withSpinner } from "../../lib/spinner.js";
-import { isJsonMode, outputEvent, outputResult, outputError } from "../../lib/output.js";
+import { isJsonMode, outputEvent, outputResult, outputError, setJsonMode } from "../../lib/output.js";
 import { displayOrderStatus } from "../../lib/display.js";
 import { clearPendingCreate, getLastOrderId, readPendingCreate } from "../../lib/config.js";
 import { CliError, EXIT_USAGE } from "../../lib/errors.js";
@@ -12,7 +12,7 @@ export const orderWaitCommand = new Command("wait")
   .description("Aguarda um pedido até concluir (pagamento + processamento)")
   .argument("[orderId]", "ID do pedido (usa o último pedido se omitido)")
   .option("--timeout <minutos>", "Timeout em minutos", "30")
-  .option("--stream", "Emite um JSON por linha a cada mudança de status (NDJSON)")
+  .option("--stream", "Emite um JSON por linha a cada mudança de status (NDJSON; implica --json)")
   .addHelpText(
     "after",
     `
@@ -41,7 +41,8 @@ Observações:
       }
 
       const timeoutMs = timeoutMinutesToMs(opts.timeout, 30);
-      const stream = !!opts.stream && isJsonMode();
+      const stream = !!opts.stream;
+      if (stream) setJsonMode(true);
 
       const initial = await withSpinner("Consultando pedido...", () => getOrder(orderId));
       const pendingFill = readPendingCreate(orderId);

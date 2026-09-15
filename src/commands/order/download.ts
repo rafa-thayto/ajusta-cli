@@ -5,7 +5,7 @@ import { withSpinner } from "../../lib/spinner.js";
 import { isJsonMode, outputResult, outputError } from "../../lib/output.js";
 import { downloadOrderFile, type FileType } from "../../lib/download.js";
 import { CliError, EXIT_USAGE } from "../../lib/errors.js";
-import { ensureWritable } from "../cv.js";
+import { ensureWritable } from "../../lib/wait.js";
 
 const VALID_TYPES: FileType[] = [
   "original",

@@ -47,7 +47,8 @@ it at another API. Never create real orders while testing — `ajusta ats`,
 - `src/lib/poll.ts` — payment phase, `afterPayment` hook, processing phase.
   `create` submits the résumé form in that hook; `order wait` finishes an
   unfilled create order there.
-- `src/lib/wait.ts` — the shared shape of every paid flow: `announceOrder`
+- `src/lib/wait.ts` — the shared shape of every paid flow: `parsePaidFlowOptions`
+  (output/--no-download/--no-wait/--timeout, one place), `ensureWritable`, `announceOrder`
   (the first JSON document / the PIX card), `waitForOrder` (spinner + poll),
   `assertCompleted` (failed/expired → typed error with hint).
 - `src/lib/spinner.ts` — `withSpinner` retries 429/5xx/network with backoff.

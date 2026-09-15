@@ -13,8 +13,7 @@ import { collectCheckoutForm, type PartialFormData } from "../lib/prompts.js";
 import { CliError, EXIT_USAGE, FileError } from "../lib/errors.js";
 import { resolvePhotoInput } from "../lib/input.js";
 import { DEFAULT_PHOTO_OUTPUT, PHOTO_STYLES } from "../lib/constants.js";
-import { announceOrder, assertCompleted, timeoutMinutesToMs, waitForOrder } from "../lib/wait.js";
-import { ensureWritable } from "./cv.js";
+import { announceOrder, assertCompleted, parsePaidFlowOptions, waitForOrder } from "../lib/wait.js";
 
 export const photoCommand = new Command("photo")
   .description("Gera uma foto profissional com IA")
@@ -39,8 +38,8 @@ export const photoCommand = new Command("photo")
   )
   .option("--force", "Sobrescrever arquivo de saída")
   .option("--timeout <minutos>", "Timeout em minutos", "15")
-  .option("--no-download", "Não baixar o resultado automaticamente")
-  .option("--no-wait", "Cria o pedido e sai; acompanhe com `ajusta order wait`")
+  .option("--no-download", "Aguardar a conclusão sem baixar o resultado")
+  .option("--no-wait", "Cria o pedido e sai (implica --no-download); acompanhe com `ajusta order wait`")
   .addHelpText(
     "after",
     `
@@ -61,12 +60,7 @@ Esquema de --from spec.json:
   )
   .action(async (image: string, opts) => {
     try {
-      const output = opts.output as string;
-      const noDownload = opts.download === false;
-      const noWait = opts.wait === false;
-      const timeoutMs = timeoutMinutesToMs(opts.timeout, 15);
-
-      if (!noDownload && !noWait) ensureWritable(output, opts.force as boolean | undefined);
+      const { output, noDownload, noWait, timeoutMs } = parsePaidFlowOptions(opts, 15);
 
       const photo = resolvePhotoInput(image);
       if (photo.warn && !isJsonMode()) log.warn(photo.warn);
