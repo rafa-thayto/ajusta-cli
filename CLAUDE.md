@@ -15,7 +15,7 @@ pipe — and every command must serve both. The bundled skill in
 ```sh
 npm install          # deps
 npm run dev          # tsup --watch
-npm run build        # dist/index.js (single ESM bundle, node18 target)
+npm run build        # dist/index.js (single ESM bundle, node20 target)
 npm test             # node:test via tsx, test/**/*.test.ts
 npm run typecheck    # tsc --noEmit
 ./scripts/release.sh [patch|minor|major]   # bump, build, publish, tag, GitHub release
