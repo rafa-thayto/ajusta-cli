@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [18, 20, 22]
+        node: [20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,5 +25,8 @@ jobs:
         run: |
           node dist/index.js --version
           node dist/index.js --help > /dev/null
-          AJUSTA_NO_UPDATE_CHECK=1 node dist/index.js order wait --json 2>err.json; test $? -eq 2
+          # bash -e would stop at the expected non-zero exit, so capture it.
+          code=0
+          AJUSTA_NO_UPDATE_CHECK=1 node dist/index.js order wait --json 2>err.json || code=$?
+          test "$code" -eq 2
           grep -q '"code":"missing_order_id"' err.json
