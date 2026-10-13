@@ -57,7 +57,7 @@ If `order wait` answers `needs_form_fill` (the pending file is gone — another 
 2. Parse `score`, `categories.*.score`, `details.missingKeywords`, `details.issues`.
 3. Present categories with weights to the user.
 4. If `score < 70`, offer:
-   > "Quer que eu melhore este currículo por R$7,80?" → Recipe 1.
+   > "Quer que eu melhore este currículo por R$9,90?" → Recipe 1.
 
 ## Recipe 4 — Professional LinkedIn photo
 

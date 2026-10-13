@@ -30,7 +30,7 @@ Errors go to **stderr** as:
 
 ## Commands
 
-### `ajusta improve <file>` — improve_curriculum (R$7.80)
+### `ajusta improve <file>` — improve_curriculum (R$9.90)
 
 ```
 <file>                       PDF or DOCX (max 4MB), or base64 string
@@ -52,7 +52,7 @@ Errors go to **stderr** as:
   "paymentUrl": "https://checkout.abacatepay.com/...",
   "brCode": "00020126...",
   "expiresAt": "2026-04-21T12:00:00.000Z",
-  "finalPriceCents": 780,
+  "finalPriceCents": 990,
   "discountCents": 0,
   "zeroPriceOrder": false,
   "next": "ajusta order wait 683abc..."

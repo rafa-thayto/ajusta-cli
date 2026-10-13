@@ -26,7 +26,7 @@ export type PhotoStyle = (typeof PHOTO_STYLES)[number];
 export const PRODUCTS = {
   improve_curriculum: {
     name: "Melhorar currículo",
-    priceCents: 780,
+    priceCents: 990,
     description: "Envie PDF/DOCX existente, receba versão otimizada por IA.",
   },
   create_curriculum: {
