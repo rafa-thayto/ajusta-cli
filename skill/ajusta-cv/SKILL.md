@@ -22,7 +22,7 @@ Env: `AJUSTA_API_URL` (override), `AJUSTA_API_KEY` (optional bearer).
 
 | Product | Command | Price | In → Out |
 |---|---|---|---|
-| Improve CV | `ajusta improve <file>` | R$7.80 | PDF/DOCX → improved PDF/DOCX/LaTeX |
+| Improve CV | `ajusta improve <file>` | R$9.90 | PDF/DOCX → improved PDF/DOCX/LaTeX |
 | Create CV | `ajusta create --from resume.json` | R$4.90 | JSON form → PDF/DOCX/LaTeX |
 | Pro headshot | `ajusta photo <image> --style=X` | R$1.95 | JPG/PNG/WebP → headshot PNG |
 | ATS score | `ajusta ats <file>` | **Free** | PDF/DOCX/text → JSON score |

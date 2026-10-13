@@ -19,7 +19,7 @@ test("timeoutMinutesToMs converts minutes and falls back on garbage", () => {
 
 test("orderCreatedPayload is the stable first document of every paid flow", () => {
   const payload = orderCreatedPayload(
-    { orderId: "o1", finalPriceCents: 780, brCode: "000201", paymentUrl: "https://pay" },
+    { orderId: "o1", finalPriceCents: 990, brCode: "000201", paymentUrl: "https://pay" },
     { parentOrderId: "p1" },
   );
   assert.equal(payload.status, "pending_payment");
